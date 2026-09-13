@@ -13,22 +13,22 @@ from urllib.parse import parse_qs, urlparse
 class GameRunner:
     """Single writer around a continuous play session."""
 
-    def __init__(self, session, tick_seconds=0.18):
+    def __init__(self, session, tick_seconds=0.18, start_paused=False):
         self.session = session
         self.tick_seconds = max(0.0, float(tick_seconds))
         self.control_token = secrets.token_urlsafe(32)
         self.condition = threading.Condition()
         self.revision = 0
         self.sequence = 0
-        self.status = "starting"
-        self.snapshot = {
+        self.status = "paused" if start_paused else "starting"
+        self.snapshot = session.preview() if start_paused else {
             "episode": session.episode,
             "observation": session.observation_count,
             "source": session.mode,
             "status": "starting",
         }
         self.error = None
-        self._pause_requested = False
+        self._pause_requested = bool(start_paused)
         self._stop_requested = False
         self._thread = None
 
@@ -119,6 +119,7 @@ class FlyBreakHTTPServer(ThreadingHTTPServer):
 
 def create_server(runner, port=8765, web_root=None):
     root = Path(web_root or Path(__file__).with_name("web")).resolve()
+    fly_art = Path(__file__).resolve().parent.parent / "assets" / "stonkfly.png"
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "FlyBreak/1"
@@ -159,22 +160,23 @@ def create_server(runner, port=8765, web_root=None):
                 self._events()
                 return
             assets = {
-                "/": ("index.html", "text/html; charset=utf-8"),
-                "/index.html": ("index.html", "text/html; charset=utf-8"),
-                "/app.css": ("app.css", "text/css; charset=utf-8"),
-                "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/": (root / "index.html", "text/html; charset=utf-8"),
+                "/index.html": (root / "index.html", "text/html; charset=utf-8"),
+                "/app.css": (root / "app.css", "text/css; charset=utf-8"),
+                "/app.js": (root / "app.js", "text/javascript; charset=utf-8"),
+                "/stonkfly.png": (fly_art, "image/png"),
             }
             asset = assets.get(parsed.path)
             if asset is None:
                 self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
                 return
-            path = root / asset[0]
+            path = asset[0]
             try:
                 payload = path.read_bytes()
             except FileNotFoundError:
                 self._json({"error": "asset missing"}, HTTPStatus.NOT_FOUND)
                 return
-            if asset[0] == "index.html":
+            if path.name == "index.html":
                 payload = payload.replace(
                     b"__CONTROL_TOKEN__", runner.control_token.encode()
                 )

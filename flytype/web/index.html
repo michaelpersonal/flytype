@@ -15,6 +15,7 @@
       <div><strong>FLYBREAK</strong><span>NEURAL ARENA</span></div>
     </div>
     <div class="run-meta">
+      <button id="sound-toggle" class="sound-toggle" type="button" aria-pressed="true"><i></i><span>SOUND READY</span></button>
       <span id="source" class="source-badge pending">CONNECTING</span>
       <span class="run-state"><i id="status-dot"></i><span id="runner-status">STARTING</span></span>
       <span class="observation">OBS <b id="observation">—</b></span>
@@ -22,6 +23,42 @@
   </header>
 
   <main class="console">
+    <aside class="neural-subject" aria-label="Fly and MaleCNS model">
+      <section class="subject-card brain-card">
+        <div class="subject-heading">
+          <div><span>CNS ACTIVITY</span><h2>MaleCNS brain</h2></div>
+          <span class="live-chip"><i></i> LIVE</span>
+        </div>
+        <div class="brain-visual">
+          <canvas id="brain" aria-label="Stylized MaleCNS activity map"></canvas>
+          <span class="hemisphere left">L</span><span class="hemisphere right">R</span>
+        </div>
+        <div class="subject-caption">
+          <strong>Full retained graph</strong>
+          <span>Stylized silhouette driven by live spike buckets</span>
+        </div>
+      </section>
+
+      <div class="signal-path" aria-hidden="true">
+        <span>SENSE</span><i></i><b>NEURAL LOOP</b><i></i><span>MOVE</span>
+      </div>
+
+      <section class="subject-card fly-card">
+        <div class="subject-heading">
+          <div><span>MODEL AVATAR</span><h2>Fly at the controls</h2></div>
+        </div>
+        <div class="fly-visual" id="fly-visual" role="img" aria-label="Digital fruit fly avatar">
+          <img src="/stonkfly.png" alt="">
+          <div class="scan-line" aria-hidden="true"></div>
+          <span class="avatar-label">DIGITAL AVATAR</span>
+        </div>
+        <div class="subject-caption action-caption">
+          <strong id="fly-action">WAITING</strong>
+          <span>Mirrors the decoded paddle output</span>
+        </div>
+      </section>
+    </aside>
+
     <section class="stage-column" aria-label="Live game">
       <div class="score-strip">
         <div><span>SCORE</span><strong id="score">000000</strong></div>

@@ -190,6 +190,11 @@ def _build_parser():
              "calibrated in. It does not change the cost per observation",
     )
     web.add_argument("--shuffle-feedback", action="store_true")
+    web.add_argument(
+        "--start-paused",
+        action="store_true",
+        help="show the untouched game at observation zero and wait for PLAY",
+    )
     web.add_argument("--no-open", action="store_true")
     web.add_argument(
         "--motor-decoder",
@@ -662,7 +667,11 @@ def cmd_web(args):
             fixture_decoder=fixture_decoder,
             motor=motor,
         )
-        runner = GameRunner(session, tick_seconds=args.tick_seconds)
+        runner = GameRunner(
+            session,
+            tick_seconds=args.tick_seconds,
+            start_paused=args.start_paused,
+        )
         server = create_server(runner, port=args.port)
         url = f"http://127.0.0.1:{server.server_address[1]}/"
         print(json.dumps({"url": url, "source": session.mode}), flush=True)

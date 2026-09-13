@@ -1,0 +1,16 @@
+This project began from the Stonkfly connectome experiment by nftechie
+(https://github.com/nftechie/stonkfly) and diverged from it: the trading and
+exchange modules were removed, and the character-selection and brick-breaker
+tasks, the retinal population decoder, the web interface and the validation
+tooling were written afterwards.
+
+The upstream repository carried no licence file at the time this project was
+derived from it. This NOTICE is an attribution of origin, not a claim that the
+upstream work is MIT licensed. The MIT licence in LICENSE covers the work in
+this repository authored by the copyright holder named there.
+
+assets/stonkfly.png originates from that upstream project and is still used as
+a presentation asset by the local web console.
+
+Data: the MaleCNS v1.0 connectome is downloaded at run time from its own
+publishers and is not redistributed here. See docs/model.md.

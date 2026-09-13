@@ -87,3 +87,30 @@ def test_static_paths_cannot_escape_packaged_root(live_server):
         urllib.request.urlopen(url + "/../pyproject.toml", timeout=3)
     assert missing.value.code == 404
 
+
+def test_fly_art_is_served_as_a_packaged_presentation_asset(live_server):
+    _, _, url = live_server
+    with urllib.request.urlopen(url + "/stonkfly.png", timeout=3) as response:
+        assert response.headers.get_content_type() == "image/png"
+        assert response.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+def test_start_paused_shows_pristine_game_until_resume(tmp_path):
+    session = fixture_session(tmp_path)
+    runner = GameRunner(session, tick_seconds=0.01, start_paused=True)
+    initial = runner.public_state()
+    assert initial["runner_status"] == "paused"
+    assert initial["observation"] == 0
+    assert initial["world"]["bricks_left"] == (
+        initial["world"]["rows"] * initial["world"]["columns"]
+    )
+    runner.start()
+    time.sleep(0.05)
+    assert runner.public_state()["observation"] == 0
+
+    runner.control("resume")
+    deadline = time.monotonic() + 3
+    while runner.public_state()["observation"] < 1 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert runner.public_state()["observation"] >= 1
+    runner.stop()

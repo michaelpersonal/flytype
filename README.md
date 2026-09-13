@@ -1,5 +1,7 @@
 # FlyType
 
+*[中文说明](README.zh.md)*
+
 A MaleCNS connectome simulation selects characters to reproduce a supplied
 target sentence through a fixed visual and neural interface.
 

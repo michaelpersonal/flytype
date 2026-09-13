@@ -318,20 +318,61 @@ class ContinuousPlaySession:
             "decoder_quality": self.decoder_quality,
             "neural": event["neural"],
             "retinal_png": _png_data_url(frame),
-            "geometry": {
-                "width": 320,
-                # The viewpoint the model is actually shown, so the page can
-                # describe its own sensory panel truthfully instead of assuming.
-                "egocentric": bool(self.settings.egocentric),
-                "field_top": FIELD_TOP,
-                "field_bottom": FIELD_BOTTOM,
-                "field_margin": FIELD_MARGIN,
-                "paddle_top": PADDLE_TOP,
-                "paddle_height": PADDLE_HEIGHT,
-                "ball_diameter": BALL_D,
-                "brick_top": BRICK_TOP,
-                "brick_height": BRICK_HEIGHT,
-                "brick_gap": BRICK_GAP,
-            },
+            "geometry": self._geometry(),
             "summary": self.game.summary(),
+        }
+
+    def preview(self):
+        """Render the pristine state without advancing the neural/game loop."""
+        world = self.game.view()
+        frame = render_arena(world, egocentric=self.settings.egocentric)
+        return {
+            "episode": self.episode,
+            "observation": self.observation_count,
+            "source": self.mode,
+            "status": "ready",
+            "action": "HOLD",
+            "outcome": None,
+            "event": "ready",
+            "world": world,
+            "sensory_world": world,
+            "motor": {
+                "offset_px": None,
+                "relative_motion_px": 0.0,
+                "raw_control": 0.0,
+                "control": 0.0,
+                "cell_count": len(self.motor.cell_ids) if self.motor is not None else 0,
+                "decoder_sha256": (
+                    self.motor.artifact_sha256 if self.motor is not None else None
+                ),
+            },
+            "decoder_quality": self.decoder_quality,
+            "neural": {
+                "source": self.mode,
+                "left_hz": None,
+                "right_hz": None,
+                "difference_hz": None,
+                "spike_buckets": [],
+                "compute_seconds": 0.0,
+            },
+            "retinal_png": _png_data_url(frame),
+            "geometry": self._geometry(),
+            "summary": self.game.summary(),
+        }
+
+    def _geometry(self):
+        return {
+            "width": 320,
+            # The viewpoint the model is actually shown, so the page can
+            # describe its own sensory panel truthfully instead of assuming.
+            "egocentric": bool(self.settings.egocentric),
+            "field_top": FIELD_TOP,
+            "field_bottom": FIELD_BOTTOM,
+            "field_margin": FIELD_MARGIN,
+            "paddle_top": PADDLE_TOP,
+            "paddle_height": PADDLE_HEIGHT,
+            "ball_diameter": BALL_D,
+            "brick_top": BRICK_TOP,
+            "brick_height": BRICK_HEIGHT,
+            "brick_gap": BRICK_GAP,
         }

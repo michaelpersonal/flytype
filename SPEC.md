@@ -122,7 +122,7 @@ active.
 Create the implementation as a separate code repository. Suggested location:
 
 ```text
-/Users/zhisongguo/code/flytype
+<repo>
 ```
 
 Start from the pinned Stonkfly commit:
@@ -430,7 +430,7 @@ Tools. The implementation agent must not automate OS-level installation.
 ### Python environment
 
 ```bash
-cd /Users/zhisongguo/code/flytype
+cd <repo>
 python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -442,7 +442,7 @@ python -m pip install -e '.[test]'
 Support a dedicated absolute data path:
 
 ```bash
-export FLYTYPE_DATA=/Users/zhisongguo/data/flytype-malecns-v1
+export FLYTYPE_DATA=/absolute/path/to/flytype-malecns-v1
 python -m flytype prepare
 python -m flytype verify
 ```
