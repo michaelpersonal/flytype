@@ -263,6 +263,59 @@ Episode rollover, archival, resume and the loopback control API all behaved
 correctly throughout; those parts of the site work. What does not work is the
 decode.
 
+### Why nothing downstream of the lamina fires
+
+Attempted 2026-09-13: make T4/T5 fire. It did not succeed, and the reason is
+specific enough to be worth recording. `tools/probe_propagation.py` reproduces
+all of it.
+
+With the shipped parameters a cell rests at -52 mV and fires at -45 mV, so
+sustained input must exceed **+7** for the cell to spike. Measured net input:
+
+| population | net input per cell | state |
+|---|---|---|
+| Mi1 (ON-pathway relay) | **-41.38** | clamped below its own resting potential |
+| T4c | +3.14 | below threshold |
+
+Mi1 gates the whole downstream optic lobe, and it is held 41 units below rest,
+with excitation +32.6 against inhibition -74.0. Its single largest input is
+L1 at -22.05 per cell.
+
+**The proximate cause is the transmitter-to-sign proxy.** `transmitter_signs`
+maps glutamate to inhibitory everywhere, and its own docstring says "This is
+NOT receptor physiology." In the fly, L1 -> Mi1 is the excitatory ON-pathway
+synapse; the sign is set by the postsynaptic receptor, which the annotation
+does not carry. Flipping every lamina -> medulla inhibitory edge to excitatory
+moves Mi1 from -41.38 to +2.72 -- still under the +7 it needs.
+
+**Global knobs cannot fix a balanced circuit.** T4c receives +59,174
+excitatory against -53,594 inhibitory. Scaling the synaptic gain scales both,
+and adding a tonic background wakes T4's inhibitors (Mi9, Mi4, CT1, Tlp13/14)
+as readily as its drivers. Measured across 22 configurations spanning synaptic
+gain 1.0-4.0, tonic 0-8, the lamina sign flip, and moving as well as static
+stimuli:
+
+* T4/T5 never exceeded 5% of cells firing, and were at 0.0% under every stock
+  setting, with a moving ball as well as a static one.
+* **Every configuration that made them fire produced zero cells encoding ball
+  position.** Forcing activity does not restore information.
+
+No parameter set was adopted. A more active brain that encodes nothing is worse
+than an honestly silent one, because it looks like progress.
+
+**What would actually be required**, none of which is a parameter change:
+receptor-level synapse signs rather than a transmitter proxy; graded
+transmission for photoreceptors, lamina and much of the medulla, which are
+non-spiking in vivo; and per-cell-type excitability instead of one rest and one
+threshold for all 166,700 cells. The compiled manifest already says as much:
+"Photoreceptors and lamina are graded in vivo. This experiment uses an explicit
+LIF proxy, low-pass luminance drive and tonic lamina current; it is not
+validated fly vision."
+
+This is also why the retinal population vector is the readout that works, and
+why reading further downstream is not available: there is nothing downstream to
+read.
+
 ### The readout was wrong, not the network
 
 Everything above says the frozen ridge decoder over descending neurons cannot
