@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flytype"
+version = "0.1.0"
+description = "A MaleCNS connectome simulation that selects characters to reproduce a supplied target sentence through a fixed visual and neural interface"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy==2.4.6", "pandas==3.0.5", "pyarrow==25.0.1", "Pillow==12.3.0"
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+flytype = "flytype.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["flytype*"]
+
+[tool.setuptools.package-data]
+"flytype.neural" = ["*.cpp", "*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

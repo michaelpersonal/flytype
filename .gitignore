@@ -1,0 +1,17 @@
+.venv/
+data/
+runs/
+*.npz
+*.feather
+*.arrow
+*.dylib
+*.so
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.DS_Store
+*.partial
+recordings/
