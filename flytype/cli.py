@@ -461,6 +461,7 @@ def _web_settings(args):
     return Settings(
         seed=args.seed,
         neural_ms=args.neural_ms,
+        pulse_ms=min(Settings.pulse_ms, args.neural_ms),
         decoder_deadband_hz=args.decoder_deadband_hz,
         decoder_baseline_obs=args.decoder_baseline_obs,
         paddle_width=args.paddle_width,
@@ -486,6 +487,7 @@ def cmd_calibrate_play_decoder(args):
     settings = Settings(
         seed=args.seed,
         neural_ms=args.neural_ms,
+        pulse_ms=min(Settings.pulse_ms, args.neural_ms),
         decoder_baseline_obs=0,
         paddle_width=args.paddle_width,
         brick_rows=args.brick_rows,

@@ -95,10 +95,30 @@ changes the neural cost:
   observation interval, so the ball travels continuously instead of jumping and
   waiting. Presentation only: committed positions are unchanged and nothing is
   extrapolated past them.
-* `--neural-ms` scales the cost linearly (500 ms costs ~2.1 s, 250 ms ~1.1 s).
-  It is a frame condition, so halving it requires re-running
-  `calibrate-play-decoder` at the same window, and it halves the spike counts
-  the readout is computed from.
+* `--neural-ms` is the dominant lever and scales the cost linearly. Measured on
+  this host, per observation and as the time for the ball to cross the field:
+
+  | window | compute / observation | field crossing |
+  | --- | --- | --- |
+  | 500 ms | 2.02 s | 12.1 s |
+  | 250 ms | 1.01 s | 6.1 s |
+  | 150 ms | 0.60 s | 3.6 s |
+  | 100 ms | 0.41 s | 2.4 s |
+
+  It is a frame condition, so changing it requires re-running
+  `calibrate-play-decoder` at the same window; `web` refuses a decoder fitted
+  at a different one. A shorter window means fewer spikes per rate estimate,
+  which would be a real cost if the readout carried a signal. It does not:
+  recalibrated at 100 ms the held-out error is 161.8 px against 159.6 px for
+  shuffled labels, statistically the same as at 500 ms. A watchable demo
+  therefore costs nothing measurable here:
+
+  ```sh
+  python -m flytype calibrate-play-decoder \
+      --out calibration/play-population-100ms.json --neural-ms 100 --repeats 5
+  python -m flytype web --out runs/live --neural-ms 100 \
+      --motor-decoder calibration/play-population-100ms.json
+  ```
 
 Plasticity and reinforcement do **not** affect the cost: measured back to back
 after the network settles, every regime costs 2.00-2.03 s per observation.

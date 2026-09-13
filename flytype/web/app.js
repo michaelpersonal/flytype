@@ -14,12 +14,20 @@
   let shownRevision = -1;
   // How long the world takes to move between two committed states. A fixed
   // short tween made the ball jump and then sit still for the rest of the
-  // observation, which reads as a stutter rather than as motion. Instead it is
-  // measured from the last few intervals, so the ball is always travelling and
-  // arrives just as the next state lands. This is presentation only: the
-  // committed positions are unchanged and nothing is extrapolated past them.
-  let lastArrival = 0, interval = 600;
-  const transitionDuration = () => Math.max(180, Math.min(4000, interval));
+  // observation. The duration has to cover the WHOLE gap to the next state or
+  // the motion runs out early and freezes, so it is taken from the observation
+  // we were just told about -- its own compute time, which is both measured and
+  // stable -- rather than from an average of arrival gaps that starts wrong and
+  // takes several observations to converge. The arrival gap is kept as a floor
+  // for whatever the server and network add on top.
+  //
+  // Overshooting is deliberate and safe: each segment starts from wherever the
+  // world is actually being drawn, so a tween cut short by the next state
+  // continues from that point instead of jumping. Undershooting is what looks
+  // broken, so the estimate is biased long.
+  let lastArrival = 0, gapEstimate = 0, computeEstimate = 0;
+  const transitionDuration = () =>
+    Math.max(200, Math.min(8000, Math.max(gapEstimate, computeEstimate) * 1.15));
   const colors = {arena:"#05090b",grid:"rgba(84,113,123,.11)",boundary:"rgba(86,219,196,.22)",brick:"#70a9ff",brickEdge:"rgba(193,220,255,.58)",paddle:"#56dbc4",paddleGlow:"rgba(86,219,196,.26)",ball:"#ffc45b",ballGlow:"rgba(255,196,91,.3)"};
 
   function sizeCanvas(canvas) {
@@ -35,12 +43,10 @@
     if (!latest || !latest.world) return null;
     if (!priorWorld) return latest.world;
     const t = Math.min(1, Math.max(0, (now - transitionStart) / transitionDuration()));
-    // The ball is linear between committed states because its physics is: a
-    // smoothstep here spans the whole observation and reads as the ball
-    // slowing to a stop and restarting every tick. The paddle keeps a slight
-    // ease, which matches a step command settling rather than a trajectory.
-    const eased = t * t * (3 - 2 * t);
-    return {...latest.world,paddle_x:mix(priorWorld.paddle_x,latest.world.paddle_x,eased),ball_x:mix(priorWorld.ball_x,latest.world.ball_x,t),ball_y:mix(priorWorld.ball_y,latest.world.ball_y,t)};
+    // Both are linear across the whole interval. Easing either one out over a
+    // two-second gap reads as it decelerating to a halt and waiting, which is
+    // the freeze this is meant to remove.
+    return {...latest.world,paddle_x:mix(priorWorld.paddle_x,latest.world.paddle_x,t),ball_x:mix(priorWorld.ball_x,latest.world.ball_x,t),ball_y:mix(priorWorld.ball_y,latest.world.ball_y,t)};
   }
 
   function drawArena(now) {
@@ -127,7 +133,7 @@
     setDecoderQuality(state.decoder_quality,isFixture);
     $("#sensory-note").textContent=state.geometry&&state.geometry.egocentric?"The exact frame the model receives, paddle-centred: where the ball sits in it is its offset. Bricks are not drawn — the model never sees the wall.":"The exact frame the model receives, in world view. The arena above is a presentation of the same state, not the model's input.";
     const neural=state.neural||{},left=neural.left_hz,right=neural.right_hz,difference=neural.difference_hz;$("#left-rate").textContent=`${numeric(left,2)} Hz`;$("#right-rate").textContent=`${numeric(right,2)} Hz`;$("#rate-diff").textContent=`${Number(difference)>=0?"+":""}${numeric(difference,2)} Hz`;drawActivity(neural,state.source);
-    priorWorld=displayWorld||(latest&&latest.world)||state.world;latest=state;const now=performance.now();if(lastArrival){const gap=now-lastArrival;if(gap>60&&gap<20000)interval=interval*0.6+gap*0.4}lastArrival=now;transitionStart=now;
+    priorWorld=displayWorld||(latest&&latest.world)||state.world;latest=state;const now=performance.now();if(lastArrival){const gap=now-lastArrival;if(gap>60&&gap<20000)gapEstimate=gapEstimate?gapEstimate*0.5+gap*0.5:gap}const cs=Number(state.neural&&state.neural.compute_seconds);if(Number.isFinite(cs)&&cs>0)computeEstimate=cs*1000;lastArrival=now;transitionStart=now;
   }
   async function sendControl(action){$("#error").textContent="";try{const response=await fetch("/api/control",{method:"POST",headers:{"Content-Type":"application/json","X-FlyType-Token":token},body:JSON.stringify({action})}),payload=await response.json();if(!response.ok)throw new Error(payload.error||`HTTP ${response.status}`);render(payload.state)}catch(error){$("#error").textContent=`Control failed: ${error.message}`}}
   $("#pause").addEventListener("click",()=>sendControl($("#pause").dataset.action||"pause"));$("#stop").addEventListener("click",()=>sendControl("stop"));// Both canvases are resized inside the animation loop, which repaints the
