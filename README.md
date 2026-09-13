@@ -1,17 +1,35 @@
-# FlyType
+# FlyType / FlyBreak
 
 *[中文说明](README.zh.md)*
 
-A MaleCNS connectome simulation selects characters to reproduce a supplied
-target sentence through a fixed visual and neural interface.
+Drive a simulation of the fruit-fly connectome — the retained **MaleCNS v1.0
+graph: 166,700 neurons, 25.6 million connections** — from rendered pixels, and
+read its neural activity back out as actions.
 
-**How it works:** a locally rendered 320×180 frame shows the target sentence,
-the text typed so far, and two candidate characters (one correct, one
-distractor) in a left key and a right key. It stimulates 3,335 brightness
-inputs and 811 R8 color inputs in the retained **MaleCNS v1.0 graph: 166,700
-neurons, 25.6 million connections**. A fixed neural readout — mean right minus
-left DNp20 firing against a configured deadband — decodes LEFT, RIGHT or HOLD.
-A correct selection appends the character; an incorrect one does not.
+![The FlyBreak console: the arena the fly plays, the exact frame it receives, and the population decoder driving the paddle](docs/images/flybreak-console.png)
+
+**Two tasks share one substrate.** Both see only a locally rendered 320×180
+frame, and in both the action comes from neural activity alone — nothing in the
+loop tells the network what it should do.
+
+| task | command | readout |
+| --- | --- | --- |
+| **FlyType** — reproduce a target sentence | `flytype run` | DNp20 right-minus-left firing vs a deadband → LEFT / RIGHT / HOLD |
+| **FlyBreak** — play brick breaker | `flytype web` | retinal population vector → continuous control in `[-1, 1]` |
+
+In FlyBreak the paddle tracks the ball at **0.782** against a measured chance
+level of 0.5 — 6,947 scored moves, **47 SE above chance**, 197 catches. How
+that readout works, and the honest limits on what it shows, are in
+[Where the signal lives](#where-the-signal-lives) below.
+
+## FlyType: typing
+
+A locally rendered 320×180 frame shows the target sentence, the text typed so
+far, and two candidate characters (one correct, one distractor) in a left key
+and a right key. It stimulates 3,335 brightness inputs and 811 R8 color inputs.
+A fixed neural readout — mean right minus left DNp20 firing against a
+configured deadband — decodes LEFT, RIGHT or HOLD. A correct selection appends
+the character; an incorrect one does not.
 
 Correct selections schedule a reward pulse into 15 identified PAM11 dopamine
 cells on the next observation; incorrect selections schedule an aversive pulse
@@ -60,7 +78,8 @@ the latest stimulus frame, event log and resumable neural checkpoints live
 under the run's `--out` directory (default `runs/default/`); nothing is
 uploaded anywhere.
 
-## Brick breaker
+## FlyBreak: brick breaker
+
 
 The legacy `play` command puts the decoded LEFT/RIGHT/HOLD on a brick-breaker
 paddle. The recording-ready continuous website uses a separate frozen
@@ -170,6 +189,49 @@ moves that went the way the ball actually lay, excluding moves made while the
 paddle was already under it. **Chance is 0.5**, and `build_breakout_frames.py`
 measures matched random and always-RIGHT agents on the same physics so the
 episode can be read against them rather than against an impression.
+
+## Where the signal lives
+
+The fly's visual system is a production line, built as ~1,770 repeating
+columns, one per lens facet — which is why almost every cell type below has
+~1,770 cells:
+
+**photoreceptors (R1–R6, R7, R8) → lamina (L1–L5, C2, C3, T1) → medulla
+(Mi, Tm, TmY, Dm) → T4/T5 motion detectors → lobula (LC, LPLC) → central brain
+→ descending neurons (DN)**
+
+FlyBreak reads the **first** stage: the retinal photoreceptors, as a
+population. Each cell votes with the screen column it looks at — a position
+taken from the connectome's own retinotopy, not fitted to anything — and the
+readout is the centroid of the most strongly driven 1%, since the ball only
+covers about 40 photoreceptors. That gives **r = 0.99 and 17.5 px** of error
+over a ±284 px range.
+
+| readout | held-out error | r | against its control |
+| --- | --- | --- | --- |
+| ridge over 32 descending neurons | 158.5 px | 0.23 | no better than shuffled labels |
+| population vector, all photoreceptors | 88.6 px | 0.87 | shuffled r 0.12 |
+| population vector, top 1% driven | **17.5 px** | **0.99** | shuffled r 0.11 |
+
+**The limit, stated plainly.** Photoreceptors are the input layer, so this
+reads the retinal image rather than a computation performed on it. It is a
+genuine neural readout and an honestly sensory one: the eye sees, the action
+follows. It is not evidence that the network decides, learns or plays.
+
+Downstream is not available to read. In this simulation the lamina retains
+almost no position information and the medulla, T4/T5 and lobula barely fire at
+all; `tools/probe_propagation.py` reproduces that diagnosis and
+[docs/validation.md](docs/validation.md) records why, along with the model
+changes it would take to fix.
+
+## Every number has a control
+
+Any figure here is reported beside the same pipeline fitted to **shuffled
+labels**, and beside a decoder that always predicts the mean. That discipline
+matters: this pipeline yields r ≈ 0.42 from pure noise, so a correlation alone
+proves nothing. `calibrate-play-decoder` prints all three every run, and
+`tools/analyze_play.py` gives an exact binomial test against the measured
+chance level of 0.5.
 
 ## Limitations
 

@@ -5,6 +5,8 @@
 
 [English README](README.md)
 
+![FlyBreak 控制台：果蝇在打的球场、它实际接收到的画面，以及驱动球拍的群体解码器](docs/images/flybreak-console.png)
+
 ---
 
 ## 这是什么
