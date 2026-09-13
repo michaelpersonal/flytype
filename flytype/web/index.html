@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="flytype-control-token" content="__CONTROL_TOKEN__">
+  <title>FlyBreak — MaleCNS Live Arena</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div><strong>FLYBREAK</strong><span>NEURAL ARENA</span></div>
+    </div>
+    <div class="run-meta">
+      <span id="source" class="source-badge pending">CONNECTING</span>
+      <span class="run-state"><i id="status-dot"></i><span id="runner-status">STARTING</span></span>
+      <span class="observation">OBS <b id="observation">—</b></span>
+    </div>
+  </header>
+
+  <main class="console">
+    <section class="stage-column" aria-label="Live game">
+      <div class="score-strip">
+        <div><span>SCORE</span><strong id="score">000000</strong></div>
+        <div><span>EPISODE</span><strong id="episode">001</strong></div>
+        <div><span>BRICKS</span><strong id="bricks">—</strong></div>
+        <div><span>BALLS</span><strong id="lives">—</strong></div>
+        <div class="decision"><span>LAST MOTOR OUTPUT</span><strong id="action">HOLD</strong></div>
+      </div>
+
+      <div class="arena-shell">
+        <canvas id="arena" aria-label="Continuous FlyBreak arena"></canvas>
+        <div class="arena-corners" aria-hidden="true"></div>
+        <div class="event-toast" id="event-toast">INITIALIZING ARENA</div>
+      </div>
+
+      <div class="stage-footer">
+        <div class="legend">
+          <span><i class="key ball"></i>ball</span>
+          <span><i class="key paddle"></i>paddle</span>
+          <span><i class="key brick"></i>active brick</span>
+        </div>
+        <div id="causal-label">Waiting for the first committed observation</div>
+      </div>
+    </section>
+
+    <aside class="telemetry" aria-label="Neural telemetry">
+      <section class="panel motor-panel">
+        <div class="panel-heading">
+          <div><span>POPULATION DECODER</span><h1>Motor command</h1></div>
+          <span id="cell-count" class="count-chip">— CELLS</span>
+        </div>
+        <div class="control-number"><span id="control-sign">↔</span><strong id="control">0.000</strong></div>
+        <div class="signed-scale" aria-label="Continuous motor command from left to right">
+          <span class="axis-left">−1</span><span class="axis-center">0</span><span class="axis-right">+1</span>
+          <i class="zero-line"></i><i id="control-bar" class="control-bar"></i><i id="control-marker" class="control-marker"></i>
+        </div>
+        <div class="readout-grid">
+          <div><span>EST. OFFSET</span><b id="offset">—</b><small>px</small></div>
+          <div><span>EST. MOTION</span><b id="motion">—</b><small>px / obs</small></div>
+        </div>
+        <p class="truth-note" id="decoder-quality">Frozen decoder. Runtime input is neural firing only.</p>
+      </section>
+
+      <section class="panel retina-panel">
+        <div class="panel-heading compact">
+          <div><span>SENSORY INPUT</span><h2>Retinal frame</h2></div><span>320 × 180</span>
+        </div>
+        <div class="retina-frame"><img id="retinal" alt="Exact frame presented to the neural model"></div>
+        <p class="truth-note" id="sensory-note">The exact frame the model receives.</p>
+      </section>
+
+      <section class="panel activity-panel">
+        <div class="panel-heading compact">
+          <div><span>MODEL ACTIVITY</span><h2>Spike field</h2></div><span id="compute-label">IDLE</span>
+        </div>
+        <canvas id="activity" aria-label="Neural spike activity heat map"></canvas>
+        <div class="activity-stats">
+          <div><span>DNp20 L</span><b id="left-rate">—</b></div>
+          <div><span>DNp20 R</span><b id="right-rate">—</b></div>
+          <div><span>Δ RATE</span><b id="rate-diff">—</b></div>
+        </div>
+      </section>
+
+      <section class="controls panel">
+        <button id="pause" type="button"><span id="pause-icon">Ⅱ</span><span id="pause-label">PAUSE AFTER CURRENT</span></button>
+        <button id="stop" class="secondary" type="button">STOP &amp; SAVE</button>
+        <p id="error" role="alert"></p>
+      </section>
+    </aside>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

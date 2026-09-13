@@ -25,12 +25,13 @@ class Settings:
     pulse_ms: float = 200
     pulse_current: float = 20
     decoder_deadband_hz: float = 0.1
-    # Observations of history in the decoder's running baseline. 0 disables it
+    # Running-median window for the decoder's decision threshold. 0 disables it
     # and compares the raw right-minus-left rate against the deadband, which is
     # what every typing run used. See neural/controller.py for what the
-    # baseline is allowed to see (its own past output, and nothing else).
+    # threshold may see (this decoder's own past output, and nothing else) and
+    # why the window length decides whether the paddle can cross the field.
     decoder_baseline_obs: int = 0
-    paddle_width: int = 80
+    paddle_width: int = 56
     paddle_speed: int = 26
     ball_speed: float = 5.0
     ball_descent_ticks: int = 12

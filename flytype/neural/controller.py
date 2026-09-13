@@ -12,6 +12,35 @@ from .common import annotations
 from .visual import VisualMemoryBrain
 
 
+def balanced_threshold(values):
+    """The cut that splits these values as evenly as possible, and lands on none.
+
+    A plain median is the obvious choice and the wrong one here. One DNp20 cell
+    per side over a 500 ms window makes the right-minus-left rate a small set of
+    even integers, so the median lands *on* a heavily populated value: those
+    observations become exact ties, and the mass left above and below the cut is
+    not equal. Measured on a live arena run that produced 18 LEFT against 43
+    RIGHT with 34 ties -- a bias large enough to drive the paddle into a wall and
+    hold it there.
+
+    Choosing among the midpoints between adjacent distinct values instead means
+    the cut never coincides with an observation, so there are no ties, and the
+    midpoint that minimises |above - below| balances the two directions by
+    construction. Computed from this decoder's own past output and nothing else.
+    """
+    unique = sorted(set(values))
+    if len(unique) < 2:
+        return (unique[0] if unique else 0.0) - 1e-9
+    array = np.asarray(values, dtype=float)
+    best, best_gap = None, None
+    for lo, hi in zip(unique, unique[1:]):
+        cut = (lo + hi) / 2
+        gap = abs(int((array > cut).sum()) - int((array < cut).sum()))
+        if best_gap is None or gap < best_gap:
+            best, best_gap = cut, gap
+    return float(best)
+
+
 class Decoder:
     """Fixed DNp20 mean-rate decoder: RIGHT/LEFT/HOLD from spike counts only.
 
@@ -25,18 +54,28 @@ class Decoder:
     typing runs the right cell led on 39 of 52 observations -- so an uncentered
     comparison spends nearly every decision on that standing offset. A single
     cell per side firing over 500 ms also quantises the difference to a handful
-    of even values, which is why the median is used rather than the mean: the
-    mean of a lopsided discrete distribution still lands off the mode and leaves
-    a residual bias, while the median splits the recent decisions evenly by
-    construction.
+    of even values, which is why the threshold is a median rather than a mean:
+    the mean of a lopsided discrete distribution still lands off the mode and
+    leaves a residual bias.
 
-    What this can and cannot do: it removes the constant offset, so the readout
-    is free to respond to the image. It cannot manufacture a correct answer,
+    The window length is a real trade-off, not a free parameter, and it is the
+    difference between a paddle that can cross the field and one that cannot. A
+    short window forces the recent decisions to be balanced by construction:
+    measured on a real 441-observation arena run, a 16-observation window
+    produced exactly 211 LEFT and 211 RIGHT and never permitted a run longer
+    than three steps in one direction, confining the paddle to a 104 px band. A
+    frozen threshold permits runs of nine but lets the offset creep back and
+    pins the paddle to a wall. On that same series a 64-observation window is
+    the compromise that holds both ends: 198 LEFT against 208 RIGHT, and a
+    paddle that reaches both walls.
+
+    What this can and cannot do: it removes a constant offset, so the readout is
+    free to respond to the image. It cannot manufacture a correct answer,
     because it is computed only from this decoder's own past output and never
     sees the target, the arena, the outcome or which direction is right. If the
-    image does not modulate these two cells, centering yields an even coin flip
-    and the measured tracking rate lands on 0.5. Both the raw and the centered
-    rate are recorded on every observation.
+    image does not modulate these two cells, centering yields a coin flip and
+    the measured tracking rate lands on 0.5. Both the raw and the centered rate
+    are recorded on every observation.
     """
 
     def __init__(self, ids, annotation, deadband_hz, baseline_obs=0):
@@ -51,6 +90,7 @@ class Decoder:
         self.baseline_obs = int(baseline_obs)
         self.history = []
         self.baseline = 0.0
+        self.calibrated = False
         self.identities = {
             k: [str(ids[i]) for i in getattr(self, k)]
             for k in ["left", "right", "gate"]
@@ -71,10 +111,10 @@ class Decoder:
             if centered > 0
             else "LEFT"
         )
-        if self.baseline_obs:
+        if self.baseline_obs and not self.calibrated:
             self.history.append(difference)
             del self.history[: -self.baseline_obs]
-            self.baseline = float(np.median(self.history))
+            self.baseline = balanced_threshold(self.history)
         return {
             "action": action,
             "left_hz": left,
@@ -87,11 +127,34 @@ class Decoder:
             "source": "malecns",
         }
 
+    def calibrate(self, differences):
+        """Fix the decision threshold from a neutral-stimulus calibration block.
+
+        `differences` are this decoder's own outputs while it was shown a
+        stimulus in which neither direction is the answer -- the ball sitting
+        directly on the paddle. The threshold is the balanced cut through them,
+        so the standing offset between the two cells is removed while leaving
+        any ball-driven deviation during play intact.
+
+        This is the piece that a threshold fitted to live task data cannot do.
+        The offset between these two cells is around 10 Hz; the ball moves them
+        by 1 to 7 Hz. A trailing window fitted during play subtracts both, so a
+        ball that genuinely sits to one side for a stretch -- exactly when the
+        paddle most needs to travel -- is read as bias and cancelled.
+        """
+        if not differences:
+            raise ValueError("Calibration needs at least one observation")
+        self.history = list(differences)
+        self.baseline = balanced_threshold(self.history)
+        self.calibrated = True
+        return self.baseline
+
     def state(self):
         return {
             "baseline": self.baseline,
             "history": list(self.history),
             "baseline_obs": self.baseline_obs,
+            "calibrated": self.calibrated,
         }
 
     def restore(self, state):
@@ -99,6 +162,7 @@ class Decoder:
             raise ValueError("Saved decoder baseline window does not match this run")
         self.baseline = state["baseline"]
         self.history = list(state["history"])
+        self.calibrated = bool(state.get("calibrated"))
 
 
 SPIKE_BUCKETS = 512
@@ -116,6 +180,7 @@ class FlyController:
             settings.decoder_deadband_hz,
             settings.decoder_baseline_obs,
         )
+        self.id_to_index = {str(cell_id): i for i, cell_id in enumerate(self.brain.ids)}
         self.buckets, self.bucket_regions = self._assign_buckets(annotation)
 
     def _assign_buckets(self, annotation):
@@ -142,7 +207,7 @@ class FlyController:
             start += share
         return buckets, regions
 
-    def observe(self, rgb, reinforcement):
+    def observe(self, rgb, reinforcement, population_ids=None):
         if reinforcement not in ("none", "reward", "aversive"):
             raise ValueError("Unknown reinforcement")
         b = self.brain
@@ -168,7 +233,7 @@ class FlyController:
                 delivered += n
                 pulse -= n
         b.counts[:] = counts
-        return {
+        result = {
             **self.decoder.decode(counts, self.s.neural_ms / 1000),
             "brain_ms": b.sim_ms,
             "compute_seconds": wall,
@@ -186,6 +251,17 @@ class FlyController:
             "input_sha256": hashlib.sha256(np.asarray(rgb).tobytes()).hexdigest(),
             "memory": b.memory(),
         }
+        if population_ids is not None:
+            try:
+                indices = [self.id_to_index[str(cell_id)] for cell_id in population_ids]
+            except KeyError as exc:
+                raise ValueError(f"Population decoder cell is absent: {exc.args[0]}") from None
+            seconds = self.s.neural_ms / 1000
+            result["population_rates"] = {
+                str(cell_id): float(counts[index] / seconds)
+                for cell_id, index in zip(population_ids, indices)
+            }
+        return result
 
     def save(self, path):
         self.brain.checkpoint(path)

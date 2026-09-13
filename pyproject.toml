@@ -22,6 +22,7 @@ include = ["flytype*"]
 
 [tool.setuptools.package-data]
 "flytype.neural" = ["*.cpp", "*.json"]
+"flytype" = ["web/*.html", "web/*.css", "web/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

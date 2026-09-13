@@ -19,7 +19,19 @@ from pathlib import Path
 from PIL import Image
 
 from flytype.arena import render_arena
-from flytype.breakout import BreakoutGame, new_game_rng
+from flytype.breakout import (
+    BALL_D,
+    BRICK_GAP,
+    BRICK_HEIGHT,
+    BRICK_TOP,
+    FIELD_BOTTOM,
+    FIELD_MARGIN,
+    FIELD_TOP,
+    PADDLE_HEIGHT,
+    PADDLE_TOP,
+    BreakoutGame,
+    new_game_rng,
+)
 from flytype.config import Settings
 
 BASELINE_EPISODES = 200
@@ -104,6 +116,9 @@ def build(run_dir: Path, out_path: Path) -> dict:
     provenance = json.loads((run_dir / "provenance.json").read_text())
     summary = summarize(events, config)
     ego = bool(config.get("egocentric"))
+    # Which loop wrote this run. Older runs predate the flag and all came from
+    # the annotating `flytype play` loop, so that is the safe default.
+    annotated = bool(events[0].get("frame_annotated", True)) if events else True
 
     frames = []
     if events:
@@ -144,7 +159,9 @@ def build(run_dir: Path, out_path: Path) -> dict:
             "brain_ms": n.get("brain_ms"),
             "source": e["source"],
             "png": _png(render_arena(
-                e["before"], action=last_action, stimulus=last_stimulus,
+                e["before"],
+                action=last_action if annotated else "NONE",
+                stimulus=last_stimulus if annotated else "NONE",
                 egocentric=ego,
             )),
         })
@@ -158,6 +175,15 @@ def build(run_dir: Path, out_path: Path) -> dict:
             "paddle_width": config["paddle_width"],
             "paddle_speed": config["paddle_speed"],
             "ball_speed": config["ball_speed"],
+            "ball_diameter": BALL_D,
+            "field_top": FIELD_TOP,
+            "field_bottom": FIELD_BOTTOM,
+            "paddle_top": PADDLE_TOP,
+            "paddle_height": PADDLE_HEIGHT,
+            "brick_top": BRICK_TOP,
+            "brick_height": BRICK_HEIGHT,
+            "brick_gap": BRICK_GAP,
+            "field_margin": FIELD_MARGIN,
             "descent_ticks": config["ball_descent_ticks"],
             "rows": config["brick_rows"],
             "columns": config["brick_columns"],

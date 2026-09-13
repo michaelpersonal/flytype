@@ -60,12 +60,10 @@ uploaded anywhere.
 
 ## Brick breaker
 
-The same two-choice readout can drive something other than a keyboard. `play`
-puts the decoded LEFT/RIGHT/HOLD on a brick-breaker paddle: one observation is
-one tick, the paddle takes one step in the decoded direction, then the ball
-moves. The network's only input is the rendered arena; it never receives the
-ball position, the score or which direction is correct, and the paddle is never
-nudged toward the ball.
+The legacy `play` command puts the decoded LEFT/RIGHT/HOLD on a brick-breaker
+paddle. The recording-ready continuous website uses a separate frozen
+MaleCNS population decoder: each neural observation produces a signed control
+in `[-1, 1]`, with a disclosed position/motion estimate.
 
 ```sh
 python -m flytype play --out runs/breakout --seed 7 --decoder-baseline-obs 16
@@ -73,14 +71,47 @@ python tools/build_breakout_frames.py runs/breakout out/arena-frames.json
 python tools/build_arena_audio.py out/arena-frames.json out/arena-clicks.wav
 ```
 
+Run the continuous local website with the verified MaleCNS dataset:
+
+```sh
+python -m flytype web --out runs/web-malecns
+```
+
+It prints a loopback URL, persists state and checkpoints under the run
+directory, and rolls into a fresh episode after a loss or clear. Use
+`--fixture` only for an explicitly synthetic fast demo.
+
+The continuous site drives the paddle from a **frozen population decoder**, not
+the two-cell DNp20 readout — that is recorded on every observation as
+`dnp20_action` and never touches the control. The decoder is fitted once,
+offline, on labelled visual probes:
+
+```sh
+python -m flytype calibrate-play-decoder --out calibration/play-population.json
+```
+
+`web` builds this automatically on first launch if it is missing, which costs a
+few hundred real MaleCNS observations (a few minutes) before the page opens.
+The artifact records the exact viewing conditions it was fitted under — view,
+paddle width, ball size, field bounds, observation window — and `web` refuses
+to run if any of them differ, because a decoder fitted on paddle-centred frames
+reports confident nonsense on any other framing.
+
+**Read the reported error before reading the game.** Calibration prints its
+held-out probe error beside two controls: the same pipeline fitted to shuffled
+labels, and a decoder that always predicts the mean. On the current geometry it
+does not beat either of them, so the site says so on screen and no claim of
+steering is made. See [docs/validation.md](docs/validation.md).
+
 Two things about this task are worth knowing before reading a score.
 
 **The playfield is a letterbox because the eye is.** The retina adapter maps
 3,335 R1–R6 and 811 R8 photoreceptors across the frame very unevenly: roughly
 two thirds land in the top third, and the bottom-left quadrant receives none at
 all. A paddle drawn at a conventional screen bottom is invisible to this eye. The
-playfield is therefore confined to `y=12..64`, which puts a mean of 25
-photoreceptors on the ball instead of 1.9.
+playfield is therefore confined to `y=12..104`, which puts a mean of 22.8
+photoreceptors on the 16 px ball instead of the 1.9 a conventional full-frame
+arena managed, and leaves it invisible at 1.7% of positions instead of 67%.
 
 **`--decoder-baseline-obs N` centers the decision on the readout's own running
 median.** The two DNp20 cells do not rest at equal rates, so the raw difference

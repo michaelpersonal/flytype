@@ -2,6 +2,9 @@
 data/
 runs/
 *.npz
+# ...except the frozen decoder's probe rates: 16 KB, and the only way to
+# re-analyse a calibration without spending connectome time collecting it again.
+!calibration/*.npz
 *.feather
 *.arrow
 *.dylib

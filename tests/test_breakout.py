@@ -8,7 +8,9 @@ import pytest
 
 from flytype.arena import render_arena
 from flytype.breakout import (
-    BALL_SIZE,
+    BALL_D,
+    PADDLE_HEIGHT,
+    PADDLE_TOP,
     FIELD_BOTTOM,
     FIELD_TOP,
     WIDTH,
@@ -32,6 +34,24 @@ def test_paddle_moves_only_where_the_action_says():
     held = game.paddle_x
     game.step("HOLD")
     assert game.paddle_x == held
+
+
+def test_fractional_control_sets_direction_and_distance():
+    game = make_game()
+    start = game.paddle_x
+    game.step_control(0.5)
+    assert game.paddle_x == start + game.paddle_speed * 0.5
+    assert game.view()["paddle_control"] == 0.5
+    game.step_control(-0.25)
+    assert game.paddle_x == start + game.paddle_speed * 0.25
+    assert game.view()["paddle_control"] == -0.25
+
+
+def test_fractional_control_rejects_nonfinite_or_out_of_range_values():
+    game = make_game()
+    for control in (-1.01, 1.01, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            game.step_control(control)
 
 
 def test_paddle_is_never_nudged_toward_the_ball():
@@ -66,22 +86,31 @@ def test_random_play_tracks_at_chance():
 
 
 def test_a_tracking_agent_beats_chance_decisively():
-    perfect = make_game(seed=1)
-    while not perfect.done and perfect.tick < 3000:
-        perfect.step(perfect.tracking_direction() or "HOLD")
-    blind = make_game(seed=1)
-    rng = random.Random(1)
-    while not blind.done and blind.tick < 3000:
-        blind.step(rng.choice(["LEFT", "RIGHT", "HOLD"]))
-    assert perfect.paddle_hits > blind.paddle_hits * 3
-    assert perfect.summary()["tracking_rate"] == 1.0
+    """Compared on survival and clearing, not raw hit count: a tracker ends the
+    episode early by clearing the wall, which caps the hits it can accumulate."""
+    cleared = blind_cleared = 0
+    for seed in range(8):
+        perfect = make_game(seed=seed)
+        while not perfect.done and perfect.tick < 3000:
+            perfect.step(perfect.tracking_direction() or "HOLD")
+        assert perfect.summary()["tracking_rate"] == 1.0
+        assert perfect.misses == 0, "a perfect tracker should never drop a ball"
+        cleared += perfect.cleared
+
+        blind = make_game(seed=seed)
+        rng = random.Random(seed)
+        while not blind.done and blind.tick < 3000:
+            blind.step(rng.choice(["LEFT", "RIGHT", "HOLD"]))
+        blind_cleared += blind.cleared
+        assert blind.misses == 3, "random play should lose every ball"
+    assert cleared == 8 and blind_cleared == 0
 
 
 def test_ball_stays_inside_the_mapped_photoreceptor_band():
     game = make_game(seed=5)
     rng = random.Random(7)
     while not game.done and game.tick < 800:
-        assert -1 <= game.ball_x <= WIDTH - BALL_SIZE + 1
+        assert -1 <= game.ball_x <= WIDTH - BALL_D + 1
         assert FIELD_TOP - 1 <= game.ball_y <= FIELD_BOTTOM + 1
         game.step(rng.choice(["LEFT", "RIGHT", "HOLD"]))
 
@@ -93,6 +122,24 @@ def test_losing_every_life_ends_the_episode():
     assert game.done and game.lives == 0 and game.misses == 1
     with pytest.raises(RuntimeError):
         game.step("HOLD")
+
+
+def test_ball_corner_must_visibly_touch_paddle_before_bouncing():
+    game = make_game()
+    game.ball_vy = abs(game.ball_vy_magnitude)
+    # The square bounds overlap by one pixel in both axes, but the circle is
+    # still diagonally clear of the paddle's top-left corner.
+    game.ball_x = game.paddle_x - BALL_D + 1
+    game.ball_y = PADDLE_TOP - BALL_D + 1
+    before_vy = game.ball_vy
+    assert not game._hit_paddle()
+    assert game.ball_vy == before_vy
+
+    # Direct tangency with the top face is visible contact and must bounce.
+    game.ball_x = game.paddle_x
+    game.ball_y = PADDLE_TOP - BALL_D
+    assert game._hit_paddle()
+    assert game.ball_vy < 0
 
 
 def test_rejects_unknown_action():
@@ -133,7 +180,7 @@ def test_arena_renders_both_paddle_positions_identically_apart_from_position():
     a = render_arena(left.view())[:, :, :]
     b = render_arena(right.view())[:, :, :]
     # The same pixels, mirrored about the field's vertical axis, in the paddle band.
-    band = slice(55, 64)
+    band = slice(PADDLE_TOP, PADDLE_TOP + PADDLE_HEIGHT)
     assert np.array_equal(
         np.sort(a[band].reshape(-1, 3), axis=0),
         np.sort(b[band].reshape(-1, 3), axis=0),
@@ -154,7 +201,7 @@ def test_fixture_play_run_is_reproducible(tmp_path):
 
 def _paddle_columns(frame):
     """Columns where the paddle's own colour appears in the paddle band."""
-    band = frame[55:64]
+    band = frame[PADDLE_TOP:PADDLE_TOP + PADDLE_HEIGHT]
     mask = (band[:, :, 1] > 200) & (band[:, :, 0] < 120)
     return np.flatnonzero(mask.any(axis=0))
 
@@ -173,10 +220,10 @@ def test_egocentric_view_encodes_the_ball_offset_not_its_world_position():
     def ball_centre(paddle_x, offset):
         game = make_game()
         game.paddle_x = paddle_x
-        game.ball_x = paddle_x + game.paddle_width / 2 - BALL_SIZE / 2 + offset
-        game.ball_y = 34.0
+        game.ball_x = paddle_x + game.paddle_width / 2 - BALL_D / 2 + offset
+        game.ball_y = float(game.wall_bottom + 4)
         frame = render_arena(game.view(), egocentric=True)
-        band = frame[34:44]
+        band = frame[int(game.ball_y):int(game.ball_y) + BALL_D]
         cols = np.flatnonzero((band > 250).all(axis=2).any(axis=0))
         return (cols[0] + cols[-1]) / 2
 

@@ -6,10 +6,18 @@ compiled** (not skipped as unavailable): 166,700 neurons, 25,582,938 directed
 connections, 124,177,617 synaptic contacts, matching the committed checksum
 locks exactly.
 
-Final local result: **46 tests passed**, including the opt-in full-connectome
-tests (`FLYTYPE_FULL_TEST=1`). A real MaleCNS run (below) produced stimulus
-frames, neural-only decoded actions, delayed reinforcement, valid checkpoints,
-and resumed correctly from committed state.
+Current local result (2026-09-12): **88 passed, 6 skipped**; the skipped tests
+are the opt-in full-connectome ones, which pass under `FLYTYPE_FULL_TEST=1`.
+A real MaleCNS run (below) produced stimulus frames, neural-only decoded
+actions, delayed reinforcement, valid checkpoints, and resumed correctly from
+committed state.
+
+The brick-breaker sections below were revised on 2026-09-12 after re-measuring
+the geometry and re-running the population calibration with warm-up, full
+offset range, repeated conditions and matched null controls. **Two figures
+previously reported here are withdrawn** and marked as such in place: the
+population decoder's 0.558 correlation / 83.85 px error, and a 0.545 tracking
+rate for one egocentric episode.
 
 | Check | Observed result | What it does not establish |
 | --- | --- | --- |
@@ -76,10 +84,22 @@ bricks); an always-RIGHT agent scores **0.051**.
 811 mapped R8 photoreceptors, roughly two thirds land in the top third of the
 frame and the bottom-left quadrant receives none. A 6 px ball in a conventional
 full-frame arena drew a mean of **1.9** photoreceptors and was completely
-invisible at 28 of 42 sampled positions. Confining the playfield to `y=12..64`
-and enlarging the ball to 10 px raised this to a mean of **25.5** over 2,284
-real ball positions, blind at 4.7%. This also applies to the typing display,
-whose key band extends well below the sampled region.
+invisible at 28 of 42 sampled positions. This also applies to the typing
+display, whose key band extends well below the sampled region.
+
+Re-measured 2026-09-12 for the current geometry — field `y=12..104`, 16 px
+circular ball — over every ball position the arena can produce, on a 6 px grid:
+
+| ball | mean photoreceptors on the ball | positions with none | 10th percentile |
+| --- | --- | --- | --- |
+| 6 px, full-height field (original) | 1.9 | 67% | 0 |
+| 16 px, `y=12..104` (current) | **22.8** | **1.7%** | 4 |
+| 24 px, `y=12..104` (previous) | 50.5 | 0.2% | 10 |
+
+The ball is comfortably visible at its current size. The 10th-percentile figure
+is the cost of the smaller ball: in the worst decile of positions it lands on
+about four photoreceptors, so this table is worth regenerating whenever the
+geometry moves.
 
 *A mean-rate readout cannot compute a relative position.* Probing the pathway
 directly — same paddle geometry, ball pinned either side of it, paddle parked at
@@ -93,18 +113,23 @@ other. Rendering the field scrolled so the paddle sits at the frame centre
 then separates the conditions by **+1.89 Hz**, rising to d′ = 3.03 when the ball
 is far from the paddle and falling to roughly zero when it is close.
 
-**Episodes run so far** (MaleCNS, seed 7, `--decoder-baseline-obs 16`):
+**Legacy DNp20 episodes.** These were recorded under an **earlier arena** — an
+80 px paddle and the old `y=12..64` field — and the fixed-view run predates the
+`egocentric` setting existing at all. They are kept because they are what the
+two-cell readout did, but they are not reproducible with the current geometry
+and must not be compared against anything measured after it changed. Recounted
+2026-09-12 from the event logs still in `runs/` with `tools/analyze_play.py`:
 
-| view | ticks | scored moves | tracking | paddle hits | balls lost |
-|---|---|---|---|---|---|
-| fixed (`runs/breakout-fixedview`) | 257 | 182 | 0.473 | 1 | 3 |
-| egocentric (`runs/breakout`) | 177 | 110 | 0.545 | 0 | 3 |
+| view | ticks | scored moves | tracking | exact two-sided p |
+|---|---|---|---|---|
+| fixed (`runs/breakout-fixedview`) | 257 | 179 | 0.475 | 0.55 |
+| egocentric (`runs/breakout`) | 193 | 137 | 0.482 | 0.73 |
 
-Neither is distinguishable from chance on its own: the egocentric episode is
-0.94 SE above 0.5, exact two-sided binomial p = 0.39. **No claim is made that
-the network plays this game.** Use `tools/analyze_play.py` to pool episodes and
-get the exact test; additional seeds are the only way to separate a small real
-effect from noise, and the effect predicted by the probe above is small.
+Neither is distinguishable from chance, and both sit slightly below it. **No
+claim is made that the network plays this game.** An earlier revision of this
+document reported 0.545 for the egocentric episode; that run directory has
+since been overwritten and the figure is not reproducible, which is why the
+table above is recounted from files rather than carried forward.
 
 `--decoder-baseline-obs N` centers the decision on the running median of the
 decoder's own last N right-minus-left values. Without it the raw difference is
@@ -119,6 +144,12 @@ a third of observations do not move the paddle at all.
 ## Reproduce
 
 ```sh
+# Frozen population decoder for the continuous site, with its own controls
+python -m flytype calibrate-play-decoder --out calibration/play-population.json \
+    --seed 7 --repeats 5
+# The continuous site itself, real MaleCNS
+python -m flytype web --out runs/web-malecns
+# Legacy two-cell DNp20 paddle
 python -m flytype play --out runs/breakout --seed 7 --decoder-baseline-obs 16 --egocentric
 python tools/analyze_play.py runs/breakout runs/breakout-fixedview
 python -m pytest -q
@@ -134,6 +165,128 @@ report. Prices, spike patterns and outcomes will differ machine to machine and
 run to run even with the same seed if the MaleCNS source files, kernel source,
 or decoder configuration differ from what `provenance.json` records for the
 run.
+
+## Continuous population-decoder calibration
+
+The continuous website drives the paddle from a frozen population decoder: a
+ridge fit from the firing rates of 32 selected bilateral descending neurons
+(chosen from 1,326 candidates) to the ball's horizontal offset from the paddle.
+Calibration is the only place labelled offsets touch neural data. It runs
+offline with plasticity frozen and no reinforcement, and the artifact is
+read-only at runtime.
+
+### What the substrate does, measured before designing the probes
+
+| Property | Measurement | Consequence for the probe design |
+|---|---|---|
+| Startup transient | On an **unchanging** frame, total spikes ran 185k → 196k → 318k → 419k, then held at 419k ± 0.5% | The network needs ~4 observations to settle. The first 8 are now discarded before anything is recorded. |
+| Per-observation noise | Repeating one frame moved the DNp20 difference over several Hz — comparable to the ball's own effect | Every condition is repeated, and the train/validation split is taken **across conditions**, never across repeats of one. |
+| Reachable offset | ±284 px, from the arena geometry | Probes span the full range. An earlier probe set covered ±120 px, so most of the operating range was extrapolation. |
+| Retinal sampling in y | Strongly uneven | Conditions span ball height as well as offset, and error is reported per height band. |
+| Observation cost | ~0.6–1.4 s | A few hundred probes costs minutes, so the small probe count was never a compute constraint. |
+
+### Result
+
+`calibrate-play-decoder --seed 7 --repeats 5`, 433 real MaleCNS observations,
+85 conditions (17 offsets × 5 heights), 64 training and 21 held-out conditions:
+
+| Measure | Value | Matched control |
+|---|---|---|
+| Held-out MAE | **158.5 px** | 161.6 px with shuffled labels; **166.5 px** predicting the mean |
+| Held-out correlation | 0.229 | −0.063 with shuffled labels |
+| MAE, repeats averaged per condition | 156.9 px | 161.6 px with shuffled labels |
+| Correlation, repeats averaged | 0.406 | −0.103 with shuffled labels |
+
+**The decoder does not recover ball position.** It beats a decoder that has
+learned nothing and always predicts the mean by 5%, and it beats its own
+shuffled labels by 2%. The correlation looks more encouraging than the error
+does, but this pipeline produces a held-out correlation near **0.42 from pure
+noise** — verified on synthetic data in
+`tests/test_play_calibration.py::test_pure_noise_does_not_look_like_a_signal`
+— so 0.229 is at the floor, and 0.406 on 21 held-out conditions is t = 1.94,
+p ≈ 0.07, not significant.
+
+**This is not a noise problem.** Averaging five repeats per condition cuts
+per-observation noise by √5 while leaving any real signal intact. It moved the
+error from 158.5 px to 156.9 px. Had the signal been present but buried, that
+average — equivalent to 2.5 s of integration — would have exposed it. A longer
+`--neural-ms` will therefore not fix this.
+
+What it does *not* establish: that the pathway carries no offset information at
+all. Earlier direct d′ probes of the DNp20 pair separated far-left from
+far-right at d′ = 3.32 at ±250 px while sitting near zero at ±180 px — a
+**non-monotonic** relationship, which a linear decoder cannot represent whatever
+its regularisation. A nonlinear readout over the same recorded rates is the
+open question, and the probe rates are saved beside the artifact
+(`play-population.probes.npz`) so it can be asked without further MaleCNS time.
+
+An earlier revision of this document reported correlation **0.558** and MAE
+**83.85 px** from a 21-probe calibration. Those numbers are withdrawn: that fit
+spanned only ±120 px (a narrower range mechanically lowers MAE), recorded from
+the first observation with no warm-up, fitted 32 weights to 16 training probes,
+and had no control to compare against. No artifact from it survives.
+
+Fixture mode is synthetic and never substitutes for a failed real calibration;
+in fixture mode the control is scripted from the ball position and the page
+says so.
+
+### The decoder driving a real game
+
+`python -m flytype web --out runs/web-malecns`, 305 real MaleCNS observations
+across 4 episodes, stopped cleanly through the browser control API. Scored with
+`tools/analyze_play.py` against the measured chance level of 0.5:
+
+| Measure | Value |
+|---|---|
+| Scored moves | 256 of 305 observations |
+| Tracking rate | **0.371** |
+| Distance from chance | −4.12 SE, exact two-sided binomial **p < 0.0001** |
+| Paddle moves | 93 LEFT against 212 RIGHT |
+| Field visited | paddle_x 155..264 of 0..264 |
+| Offset estimates outside ±284 px | **30%**, reaching +828 px |
+
+The paddle does not merely fail to track the ball — it tracks it **significantly
+worse than random**, and confines itself to the right-hand 41% of the field.
+This is the standing offset bias of the previous section acting on the control:
+a persistently positive offset estimate is a persistent RIGHT command.
+
+The decisive detail is the telemetry. Over the same 305 observations the
+two-cell DNp20 readout, recorded but never gating, came out very nearly
+balanced — 156 LEFT against 147 RIGHT — while the population decoder driving
+the paddle went 93 against 212. The network is not biased to one side. The
+decoder's fitted normalisation is, because it is being applied to rates from a
+regime it was not fitted on. The two decoders agreed on 68% of observations,
+which is also why they are now recorded separately as `action` and
+`dnp20_action`.
+
+Episode rollover, archival, resume and the loopback control API all behaved
+correctly throughout; those parts of the site work. What does not work is the
+decode.
+
+### The cause: the decoder is deployed outside its calibration regime
+
+Calibration runs with plasticity **frozen** and reinforcement **off**. The
+continuous site runs with plasticity on, and reinforcement fires on nearly
+every observation — 57 of the first 58 in `runs/web-malecns` (15 reward, 42
+aversive). Reinforcement pulses drive PAM11/PPL101 and shift firing
+network-wide, so the per-cell means and scales the decoder z-scores with were
+fitted on a rate distribution it never sees during play.
+
+The symptom is unmistakable. Over the first 58 real observations the offset
+estimate averaged **+276 px** and reached **+655 px**, when the ball can never
+be more than 284 px from the paddle. The bias is present at full size from
+observation 1 and does not grow, so it is a standing distribution mismatch, not
+plasticity drifting during play.
+
+This is recorded and shown on the page, not corrected. Re-centring the estimate
+at runtime would mean the decoder was reading something other than neural
+firing, which is the one thing it must not do. The legitimate fixes are to
+calibrate under the same regime the site runs in, or to run the site frozen;
+both are experiment-design choices rather than code changes, so neither is
+made here. It is not the reason the decoder fails to *decode* — it scores at the noise
+floor on held-out probes collected in its own regime — but it is the reason the
+paddle performs measurably worse than random rather than merely randomly. Any
+future calibration must control for it.
 
 Before claiming learned character selection, implement the held-out replay,
 multi-seed comparison, frozen-weight and shuffled-feedback controls, and

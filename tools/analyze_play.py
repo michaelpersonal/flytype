@@ -38,7 +38,10 @@ def read(run_dir: Path):
         "seed": config["seed"],
         "egocentric": bool(config.get("egocentric")),
         "baseline_obs": config["decoder_baseline_obs"],
-        "ticks": events[-1]["tick"] if events else 0,
+        # `flytype play` events carry a tick; continuous web events carry an
+        # episode and a monotonic observation instead, and span many episodes.
+        "ticks": (events[-1].get("tick") or events[-1]["observation"]) if events else 0,
+        "episodes": 1 + max((e.get("episode", 0) for e in events), default=0),
         "toward": toward,
         "away": away,
         "holds": sum(1 for e in events if e["action"] == "HOLD"),
@@ -59,13 +62,13 @@ def main():
     for r in runs:
         groups.setdefault("egocentric" if r["egocentric"] else "fixed view", []).append(r)
 
-    print(f"{'run':24s} {'view':11s} {'ticks':>6s} {'toward':>7s} {'away':>5s} "
+    print(f"{'run':24s} {'view':11s} {'eps':>4s} {'ticks':>6s} {'toward':>7s} {'away':>5s} "
           f"{'rate':>6s} {'hits':>5s} {'L/R':>9s}")
     for r in runs:
         n = r["toward"] + r["away"]
         rate = r["toward"] / n if n else float("nan")
         print(f"{r['run']:24s} {'ego' if r['egocentric'] else 'fixed':11s} "
-              f"{r['ticks']:6d} {r['toward']:7d} {r['away']:5d} {rate:6.3f} "
+              f"{r['episodes']:4d} {r['ticks']:6d} {r['toward']:7d} {r['away']:5d} {rate:6.3f} "
               f"{r['paddle_hits']:5d} {r['left']:4d}/{r['right']:<4d}")
 
     print()
@@ -75,7 +78,8 @@ def main():
         rate = k / n if n else float("nan")
         se = math.sqrt(0.25 / n) if n else float("nan")
         p = binomial_two_sided(k, n)
-        print(f"{name}: {len(group)} episode(s), {n} scored moves, "
+        episodes = sum(r["episodes"] for r in group)
+        print(f"{name}: {len(group)} run(s), {episodes} episode(s), {n} scored moves, "
               f"tracking {rate:.3f} ({(rate - 0.5) / se:+.2f} SE from chance), "
               f"exact two-sided p = {p:.4f}")
         print(f"  {'above chance' if p < 0.05 and rate > 0.5 else 'below chance' if p < 0.05 else 'not distinguishable from chance'} "

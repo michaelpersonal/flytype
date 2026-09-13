@@ -139,3 +139,66 @@ def test_full_graph_checkpoint_restore_reproduces_committed_state(tmp_path):
     c.restore(path)
     assert np.array_equal(c.brain.weight, committed)
     assert c.brain.cursor == committed_cursor
+
+
+@pytest.mark.skipif(
+    os.environ.get("FLYTYPE_FULL_TEST") != "1",
+    reason="Set FLYTYPE_FULL_TEST=1 to exercise the full MaleCNS graph",
+)
+def test_full_graph_drives_the_continuous_paddle_session(tmp_path):
+    """One real observation through the web path, end to end.
+
+    This is the verification the continuous task list claimed and did not
+    have: a committed observation whose control came from MaleCNS firing via
+    the frozen population decoder, not from a fixture stand-in.
+    """
+    import numpy as np
+
+    from flytype.config import Settings
+    from flytype.data import verify
+    from flytype.motor import fit_population_decoder, frame_conditions
+    from flytype.neural.controller import FlyController
+    from flytype.play_calibration import descending_population
+    from flytype.play_session import ContinuousPlaySession
+
+    settings = Settings(seed=5, egocentric=True, frozen=True, decoder_baseline_obs=0)
+    controller = FlyController(settings)
+    population = descending_population(controller)[:8]
+    assert population, "no bilateral descending population in the retained graph"
+
+    # A trivially-fitted decoder: this test is about the plumbing carrying real
+    # MaleCNS rates, not about decoding accuracy, which docs/validation.md
+    # reports separately from a real calibration.
+    offsets = np.linspace(-80, 80, 5)
+    motor = fit_population_decoder(
+        cell_ids=population,
+        samples=np.tile(offsets.reshape(-1, 1), (1, len(population))) + 10.0,
+        offsets=offsets,
+        ridge=1.0,
+        metadata={"frame_conditions": frame_conditions(settings)},
+    )
+    motor.check_compatible(settings)
+
+    session = ContinuousPlaySession(
+        settings=settings,
+        out=tmp_path,
+        dataset_info=verify(),
+        controller=controller,
+        motor=motor,
+    )
+    snapshot = session.advance()
+
+    assert snapshot["source"] == "malecns"
+    assert snapshot["neural"]["source"] == "malecns"
+    assert snapshot["neural"]["total_spikes"] > 0
+    assert -1.0 <= snapshot["motor"]["control"] <= 1.0
+    assert snapshot["motor"]["cell_count"] == len(population)
+    assert np.isfinite(snapshot["motor"]["offset_px"])
+    # The DNp20 readout is recorded but is not what moved the paddle.
+    assert snapshot["neural"]["action"] in ("LEFT", "RIGHT", "HOLD")
+    # The page is handed the decoder's own held-out quality so it cannot show a
+    # confident offset without showing what that offset is worth.
+    assert "validation_mae_px" in snapshot["decoder_quality"]
+    assert "shuffled_control_mae_px" in snapshot["decoder_quality"]
+    assert (tmp_path / "events.jsonl").exists()
+    assert (tmp_path / "latest-input.png").exists()

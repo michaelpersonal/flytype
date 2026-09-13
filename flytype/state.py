@@ -85,7 +85,14 @@ LOCKED_ARENA_FIELDS = (
 )
 
 
-def build_provenance(settings, dataset_info, mode, task="type"):
+def build_provenance(
+    settings,
+    dataset_info,
+    mode,
+    task="type",
+    decoder_description=None,
+    claim_description=None,
+):
     all_settings = dataclasses.asdict(settings)
     source = source_signature()
     fields = LOCKED_SETTINGS_FIELDS
@@ -102,7 +109,7 @@ def build_provenance(settings, dataset_info, mode, task="type"):
         "dataset": dataset_info,
         "mode": mode,
         "task": task,
-        "decoder": (
+        "decoder": decoder_description or (
             "DNp20 mean right-minus-left firing vs a configured deadband selects "
             "LEFT/RIGHT/HOLD. DNpe017 spikes are logged, not gated. Engineered "
             "fixed mapping; never overridden by target text or correctness."
@@ -112,7 +119,7 @@ def build_provenance(settings, dataset_info, mode, task="type"):
             "selection a PPL101 aversive pulse, delivered one observation later. "
             "Not modeled pain, pleasure, consciousness or validated learning."
         ),
-        "claim": (
+        "claim": claim_description or (
             "A MaleCNS connectome simulation selects characters to reproduce a "
             "supplied target sentence through a fixed visual and neural "
             "interface."
@@ -160,6 +167,7 @@ def commit_state(
     checkpoint,
     halted,
     decoder_state=None,
+    motor_state=None,
 ):
     save_json(
         out / "state.json",
@@ -170,6 +178,7 @@ def commit_state(
             "feedback": feedback_state,
             "fixture_decoder": fixture_decoder_state,
             "decoder": decoder_state,
+            "motor": motor_state,
             "checkpoint": checkpoint,
             "halted": halted,
         },
