@@ -275,8 +275,16 @@ fitted on a rate distribution it never sees during play.
 The symptom is unmistakable. Over the first 58 real observations the offset
 estimate averaged **+276 px** and reached **+655 px**, when the ball can never
 be more than 284 px from the paddle. The bias is present at full size from
-observation 1 and does not grow, so it is a standing distribution mismatch, not
-plasticity drifting during play.
+observation 1 and does not grow, so it is not plasticity drifting during play.
+
+**The regime is not what causes the bias, though.** Running the site frozen and
+unreinforced — matching calibration exactly — left the bias in place and
+slightly worse: mean **+318 px**, with 66% of estimates outside the reachable
+range against 30% before. Matching the regime is still the right default,
+because it removes an uncontrolled variable, but the honest reading is simpler:
+a decoder carrying no signal produces an essentially arbitrary linear
+projection of the current rates, and there is no reason for that projection to
+be centred.
 
 This is recorded and shown on the page, not corrected. Re-centring the estimate
 at runtime would mean the decoder was reading something other than neural

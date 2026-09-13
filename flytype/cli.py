@@ -147,16 +147,35 @@ def _build_parser():
                      default=Settings.decoder_deadband_hz)
     web.add_argument("--decoder-baseline-obs", type=int, default=64)
     web.add_argument("--paddle-width", type=int, default=Settings.paddle_width)
-    web.add_argument("--paddle-speed", type=int, default=Settings.paddle_speed)
-    web.add_argument("--ball-speed", type=float, default=Settings.ball_speed)
-    web.add_argument("--ball-descent-ticks", type=int,
-                     default=Settings.ball_descent_ticks)
+    # The site runs at twice the legacy `play` pace. One observation is one
+    # tick and a tick costs ~2 s of MaleCNS compute, so at the legacy descent of
+    # 12 the ball takes ~24 s to cross the field, which is not watchable. Six
+    # ticks with a proportionally faster paddle covers the same 312 px of field
+    # per descent, so a decoder that tracks can still clear the wall and one
+    # that cannot still loses: verified in tests/test_breakout.py. None of
+    # these are frame conditions, so changing them needs no recalibration.
+    web.add_argument("--paddle-speed", type=int, default=52)
+    web.add_argument("--ball-speed", type=float, default=9.0)
+    web.add_argument("--ball-descent-ticks", type=int, default=6)
     web.add_argument("--brick-rows", type=int, default=Settings.brick_rows)
     web.add_argument("--brick-columns", type=int, default=Settings.brick_columns)
     web.add_argument("--lives", type=int, default=Settings.lives)
     web.add_argument("--fixed-view", action="store_true")
     web.add_argument("--fixture", action="store_true")
-    web.add_argument("--frozen", action="store_true")
+    # The site runs in the regime its frozen decoder was calibrated in:
+    # plasticity off, no reinforcement. Both opt-in flags below leave that
+    # regime. Neither changes the cost per observation.
+    web.add_argument(
+        "--plastic", action="store_true",
+        help="leave plasticity on. The decoder is frozen and fitted offline, so "
+             "nothing here can learn; weights drift away from calibration",
+    )
+    web.add_argument(
+        "--reinforce", action="store_true",
+        help="deliver PAM11/PPL101 pulses. Inert for a frozen decoder, which "
+             "cannot learn from them, and it leaves the regime the decoder was "
+             "calibrated in. It does not change the cost per observation",
+    )
     web.add_argument("--shuffle-feedback", action="store_true")
     web.add_argument("--no-open", action="store_true")
     web.add_argument(
@@ -453,7 +472,8 @@ def _web_settings(args):
         lives=args.lives,
         egocentric=not args.fixed_view,
         fixture=args.fixture,
-        frozen=args.frozen,
+        frozen=not args.plastic,
+        reinforce=args.reinforce,
         shuffle_feedback=args.shuffle_feedback,
         fast=args.fixture,
     )

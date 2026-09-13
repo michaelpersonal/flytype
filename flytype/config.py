@@ -42,6 +42,15 @@ class Settings:
     # See arena.py for why a fixed view puts zero side information in a
     # mean-rate readout.
     egocentric: bool = False
+    # Deliver the scheduled PAM11/PPL101 pulse at all. Reinforcement is the
+    # point of the typing task, but it is inert for a task driven by a frozen
+    # decoder fitted offline: no reward can change a control the network does
+    # not learn. Turning it off makes a run match the regime its decoder was
+    # calibrated in, which is the reason to do it. It does not make the run
+    # faster: measured back to back after settling, frozen/plastic and
+    # reinforced/unreinforced all cost 2.00-2.03 s per observation at ~431,000
+    # spikes.
+    reinforce: bool = True
     fixture: bool = False
     frozen: bool = False
     shuffle_feedback: bool = False

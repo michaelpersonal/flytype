@@ -238,3 +238,29 @@ def test_fixed_view_does_not_move_the_paddle_to_centre():
     game.paddle_x = 20.0
     cols = _paddle_columns(render_arena(game.view(), egocentric=False))
     assert abs((cols[0] + cols[-1]) / 2 - WIDTH / 2) > 50
+
+
+def test_the_website_pace_stays_winnable_by_tracking_alone():
+    """The site runs at twice the legacy pace so it is watchable at ~2 s/tick.
+
+    Speeding the ball up is only legitimate while the paddle can still reach it:
+    the descent is halved and the paddle step doubled, so a tracker covers the
+    same field per descent. A decoder that tracks must still clear; one that
+    cannot must still lose.
+    """
+    fast = dict(ball_descent_ticks=6, paddle_speed=52, ball_speed=9.0)
+    cleared = blind_cleared = dropped = 0
+    for seed in range(8):
+        perfect = make_game(seed=seed, **fast)
+        while not perfect.done and perfect.tick < 3000:
+            perfect.step(perfect.tracking_direction() or "HOLD")
+        cleared += perfect.cleared
+        dropped += perfect.misses
+
+        blind = make_game(seed=seed, **fast)
+        rng = random.Random(seed)
+        while not blind.done and blind.tick < 3000:
+            blind.step(rng.choice(["LEFT", "RIGHT", "HOLD"]))
+        blind_cleared += blind.cleared
+    assert cleared == 8 and dropped == 0, "a tracker must still win at this pace"
+    assert blind_cleared == 0, "a blind agent must still lose at this pace"

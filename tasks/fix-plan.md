@@ -108,13 +108,15 @@ highest-risk change available and the legacy DNp20 episodes in
    non-monotonic shape is unrepresentable by any linear decoder. Probe rates
    are now saved to `play-population.probes.npz` so a nonlinear readout can be
    tried offline with no further MaleCNS time.
-4. **The web loop costs ~2.5 s per observation, and it is neural compute.**
-   Measured 2.0 s of compute during play against 0.64 s for the same 500 ms
-   window during calibration: play runs with plasticity on and a reinforcement
-   pulse on nearly every observation, calibration runs frozen and unreinforced.
-   Writing and hashing the 7 MB checkpoint is ~4 ms of it, so the checkpoint
-   cadence is not worth changing. The 0.18 s default tick is unreachable in
-   MaleCNS mode regardless.
+4. **The web loop costs ~2 s per observation, all of it neural compute.**
+   Writing and hashing the 7 MB checkpoint is ~4 ms, and the population decoder
+   itself is 25 microseconds, so neither is worth touching. The regime makes no
+   difference: measured back to back after settling, frozen/unreinforced 2.00 s,
+   frozen/reinforced 2.01 s, plastic/unreinforced 2.03 s, all at ~431k spikes.
+   The only lever on neural cost is the observation window, which scales it
+   linearly (500 ms -> 2.14 s, 250 ms -> 1.07 s). An earlier version of this
+   note blamed plasticity and reinforcement; that was measured before the
+   network had settled and is withdrawn.
 5. **Calibration regime != play regime.** The decoder is fitted frozen and
    unreinforced and deployed plastic and reinforced, so its per-cell z-scoring
    is applied to a rate distribution it never saw. Measured as a standing
@@ -122,6 +124,10 @@ highest-risk change available and the legacy DNp20 episodes in
    and reaching +655 px when the ball can never be more than 284 px away.
    Recorded and surfaced on the page, not corrected: re-centring at runtime
    would mean the decoder was reading something other than neural firing.
+   Matching the regime does not remove the bias -- a frozen, unreinforced run
+   measured +318 px, slightly worse -- so the simpler reading is that a decoder
+   with no signal is an arbitrary linear projection with no reason to be
+   centred. Matching the regime remains the right default anyway.
 
 ## Guardrails
 

@@ -201,11 +201,16 @@ Two defects found while measuring are recorded in [validation](validation.md)
 rather than papered over: the decoder is calibrated frozen and unreinforced but
 deployed plastic and reinforced, which puts a standing ~+276 px bias on the
 estimate; and the default 0.18 s tick is unreachable in MaleCNS mode, where an
-observation costs ~2.5 s. That cost is neural compute — 2.0 s against 0.64 s
-for the same window during calibration, because play runs with plasticity on
-and a reinforcement pulse on nearly every observation while calibration runs
-frozen and unreinforced. Persisting the 7 MB checkpoint and hashing it accounts
-for about 4 ms of it and is not worth changing.
+observation costs ~2 s of neural compute. Persisting the 7 MB checkpoint and
+hashing it accounts for about 4 ms of that and is not worth changing.
+
+Measured back to back after letting the network settle, the regime does not
+affect the cost at all: frozen/unreinforced 2.00 s, frozen/reinforced 2.01 s,
+plastic/unreinforced 2.03 s, all at ~431,000 spikes per observation. The only
+lever on neural cost is the observation window, which scales it linearly
+(500 ms -> 2.14 s, 250 ms -> 1.07 s on this host). An earlier revision of this
+document attributed the cost to plasticity and reinforcement; that was measured
+before the network had settled and is withdrawn.
 
 ## Resolved Decision
 

@@ -100,13 +100,13 @@ class ContinuousPlaySession:
             # roughly +275 px present from the first observation. Recorded
             # rather than corrected: silently re-centring here would be the
             # decoder reading something other than neural firing.
-            self.decoder_quality["calibrated_frozen"] = bool(
-                motor.metadata.get("frozen_during_calibration")
+            calibrated_unreinforced = motor.metadata.get("reinforcement") == "none"
+            self.decoder_quality["regime_matches_calibration"] = bool(
+                (not motor.metadata.get("frozen_during_calibration") or settings.frozen)
+                and (not calibrated_unreinforced or not settings.reinforce)
             )
             self.decoder_quality["run_frozen"] = bool(settings.frozen)
-            self.decoder_quality["calibrated_reinforcement"] = motor.metadata.get(
-                "reinforcement"
-            )
+            self.decoder_quality["run_reinforced"] = bool(settings.reinforce)
         self.provenance = build_provenance(
             settings,
             identity,
@@ -221,7 +221,9 @@ class ContinuousPlaySession:
             before,
             egocentric=self.settings.egocentric,
         )
-        deliver = self.feedback.pending
+        # With reinforcement off the schedule is never advanced, so it stays at
+        # "none" and the network is never pushed into its elevated state.
+        deliver = self.feedback.pending if self.settings.reinforce else "none"
 
         if self.fixture_decoder is not None:
             ball = before["ball_x"] + BALL_D / 2
@@ -252,7 +254,9 @@ class ContinuousPlaySession:
         # estimate is not a continuation of this one.
         if self.motor is not None and self.game.last_event == "lost":
             self.motor.forget_motion()
-        _, scheduled = self.feedback.advance(outcome)
+        _, scheduled = (
+            self.feedback.advance(outcome) if self.settings.reinforce else ("none", "none")
+        )
         self.observation_count += 1
 
         if self.controller is not None:

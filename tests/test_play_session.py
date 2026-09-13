@@ -118,6 +118,28 @@ def test_recorded_events_reproduce_the_exact_frame_the_network_saw(tmp_path):
     assert np.array_equal(replayed, saved)
 
 
+def test_reinforcement_can_be_switched_off_entirely(tmp_path):
+    """A frozen decoder cannot learn, so pulses are pure cost and pure bias."""
+    quiet = open_fixture(tmp_path / "quiet", reinforce=False)
+    for _ in range(6):
+        quiet.advance()
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "quiet" / "events.jsonl").read_text().splitlines()
+    ]
+    assert {e["delivered_stimulus"] for e in events} == {"none"}
+    assert {e["scheduled_next_stimulus"] for e in events} == {"none"}
+
+    loud = open_fixture(tmp_path / "loud", reinforce=True)
+    for _ in range(6):
+        loud.advance()
+    loud_events = [
+        json.loads(line)
+        for line in (tmp_path / "loud" / "events.jsonl").read_text().splitlines()
+    ]
+    assert {e["scheduled_next_stimulus"] for e in loud_events} != {"none"}
+
+
 def test_fixture_session_resume_matches_uninterrupted_run(tmp_path):
     left = open_fixture(tmp_path / "left", seed=11)
     right = open_fixture(tmp_path / "right", seed=11)

@@ -81,6 +81,28 @@ It prints a loopback URL, persists state and checkpoints under the run
 directory, and rolls into a fresh episode after a loss or clear. Use
 `--fixture` only for an explicitly synthetic fast demo.
 
+**On pace.** One observation is one tick, and a tick costs about two seconds of
+MaleCNS compute on this host, so the game advances in real time no faster than
+the connectome runs. Three things affect what you see, and only the last one
+changes the neural cost:
+
+* The site runs at twice the legacy `play` pace (`--ball-descent-ticks 6`
+  with `--paddle-speed 52`), so the ball crosses the field in ~11 s rather than
+  ~22 s. A tracker can still clear the wall and a blind agent still cannot;
+  `tests/test_breakout.py` pins that. These are not frame conditions, so
+  changing them needs no recalibration.
+* The browser interpolates between committed states across the measured
+  observation interval, so the ball travels continuously instead of jumping and
+  waiting. Presentation only: committed positions are unchanged and nothing is
+  extrapolated past them.
+* `--neural-ms` scales the cost linearly (500 ms costs ~2.1 s, 250 ms ~1.1 s).
+  It is a frame condition, so halving it requires re-running
+  `calibrate-play-decoder` at the same window, and it halves the spike counts
+  the readout is computed from.
+
+Plasticity and reinforcement do **not** affect the cost: measured back to back
+after the network settles, every regime costs 2.00-2.03 s per observation.
+
 The continuous site drives the paddle from a **frozen population decoder**, not
 the two-cell DNp20 readout — that is recorded on every observation as
 `dnp20_action` and never touches the control. The decoder is fitted once,

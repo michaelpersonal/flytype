@@ -170,6 +170,7 @@ def calibrate_play_decoder(
     calibration_settings = dataclasses.replace(
         settings,
         frozen=True,
+        reinforce=False,
         fixture=False,
         fast=False,
         shuffle_feedback=False,

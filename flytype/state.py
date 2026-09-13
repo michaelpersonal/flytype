@@ -65,6 +65,7 @@ LOCKED_SETTINGS_FIELDS = (
     "pulse_current",
     "decoder_deadband_hz",
     "decoder_baseline_obs",
+    "reinforce",
     "fixture",
     "frozen",
     "shuffle_feedback",
