@@ -4,10 +4,8 @@ exchange modules were removed, and the character-selection and brick-breaker
 tasks, the retinal population decoder, the web interface and the validation
 tooling were written afterwards.
 
-The upstream repository carried no licence file at the time this project was
-derived from it. This NOTICE is an attribution of origin, not a claim that the
-upstream work is MIT licensed. The MIT licence in LICENSE covers the work in
-this repository authored by the copyright holder named there.
+The upstream project is MIT licensed. Its copyright notice is retained in
+LICENSE alongside this project's own, as that licence requires.
 
 assets/stonkfly.png originates from that upstream project and is still used as
 a presentation asset by the local web console.
