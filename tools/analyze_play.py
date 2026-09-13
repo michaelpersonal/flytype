@@ -15,13 +15,29 @@ from pathlib import Path
 
 
 def binomial_two_sided(k, n, p=0.5):
-    """Exact two-sided binomial p-value, by summing equally-or-less likely tails."""
+    """Exact two-sided binomial p-value, by summing equally-or-less likely tails.
+
+    Computed through log-gamma rather than math.comb: a few thousand scored
+    moves makes the binomial coefficient astronomically large, and multiplying
+    it by p**k overflows the float before the two huge factors can cancel.
+    """
     if n == 0:
         return 1.0
-    def pmf(i):
-        return math.comb(n, i) * p**i * (1 - p) ** (n - i)
-    observed = pmf(k)
-    return min(1.0, sum(pmf(i) for i in range(n + 1) if pmf(i) <= observed * 1.0000001))
+
+    def log_pmf(i):
+        return (
+            math.lgamma(n + 1) - math.lgamma(i + 1) - math.lgamma(n - i + 1)
+            + i * math.log(p) + (n - i) * math.log1p(-p)
+        )
+
+    observed = log_pmf(k)
+    # Sum in the log domain against the largest term, so nothing underflows to
+    # zero and nothing overflows on the way.
+    terms = [lp for i in range(n + 1) if (lp := log_pmf(i)) <= observed + 1e-9]
+    if not terms:
+        return 1.0
+    top = max(terms)
+    return min(1.0, math.exp(top) * sum(math.exp(t - top) for t in terms))
 
 
 def read(run_dir: Path):
