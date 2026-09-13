@@ -38,7 +38,7 @@ from .breakout import (
     BreakoutGame,
     new_game_rng,
 )
-from .motor import fit_population_decoder, frame_conditions
+from .motor import RetinalVectorDecoder, fit_population_decoder, frame_conditions
 from .neural.common import annotations
 
 
@@ -331,4 +331,127 @@ def calibrate_play_decoder(
         training=training,
         cell_ids=np.asarray(population),
     )
+    return decoder
+
+
+def calibrate_retinal_decoder(
+    settings,
+    out,
+    *,
+    dataset_info,
+    offset_count=15,
+    repeats=6,
+    warmup=10,
+    quantile=0.99,
+    position_scale=64.0,
+    motion_scale=48.0,
+    controller=None,
+    progress=None,
+):
+    """Fit the two-parameter retinal population vector on probe frames.
+
+    Only three things are fitted: a per-cell baseline, and the slope and
+    intercept mapping the centroid of driven photoreceptors to world offset.
+    The screen position each cell votes with is anatomical, straight from the
+    retina adapter, and is not fitted at all.
+    """
+    if settings.fixture:
+        raise ValueError("Retinal calibration requires MaleCNS, not fixture mode")
+
+    calibration_settings = dataclasses.replace(
+        settings, frozen=True, reinforce=False, fixture=False, fast=False,
+        shuffle_feedback=False,
+    )
+    if controller is None:
+        from .neural.controller import FlyController
+
+        controller = FlyController(calibration_settings)
+
+    brain = controller.brain
+    rows = np.r_[brain.retina, brain.r8]
+    columns = np.r_[brain.uv[:, 0], brain.r8_uv[:, 0]] * (WIDTH - 1)
+    cell_ids = [str(brain.ids[i]) for i in rows]
+
+    game = BreakoutGame(calibration_settings, new_game_rng(settings.seed))
+    low, high = reachable_offsets(calibration_settings)
+    offsets = np.linspace(low, high, int(offset_count))
+    height = (FIELD_TOP + FIELD_BOTTOM - BALL_D) / 2
+
+    def probe_frame(offset):
+        view = dict(game.view())
+        view["ball_x"] = game.paddle_center - BALL_D / 2 + float(offset)
+        view["ball_y"] = float(height)
+        return render_arena(view, egocentric=calibration_settings.egocentric)
+
+    frames = [probe_frame(o) for o in offsets]
+    total = warmup + len(offsets) * repeats
+    done = 0
+    for i in range(warmup):
+        result = controller.observe(frames[i % len(frames)], "none")
+        done += 1
+        if progress is not None:
+            progress(done, total, result.get("compute_seconds"))
+
+    rng = np.random.default_rng(settings.seed ^ 0x2E71A)
+    order = rng.permutation(len(offsets) * repeats)
+    counts = np.zeros((len(order), len(rows)))
+    labels = np.zeros(len(order))
+    seconds = settings.neural_ms / 1000
+    for slot, trial in enumerate(order):
+        k = int(trial % len(offsets))
+        result = controller.observe(frames[k], "none")
+        counts[slot] = brain.counts[rows] / seconds
+        labels[slot] = offsets[k]
+        done += 1
+        if progress is not None:
+            progress(done, total, result.get("compute_seconds"))
+
+    baseline = counts.mean(axis=0)
+    driven = np.maximum(counts - baseline, 0.0)
+    cut = np.quantile(driven, quantile, axis=1, keepdims=True)
+    weights = np.where(driven >= cut, driven, 0.0)
+    totals = weights.sum(axis=1)
+    usable = totals > 0
+    centroid = (weights[usable] * columns).sum(axis=1) / totals[usable]
+    slope, intercept = np.polyfit(labels[usable], centroid, 1)
+    predicted = (centroid - intercept) / slope
+    mae = float(np.mean(np.abs(predicted - labels[usable])))
+    correlation = float(np.corrcoef(centroid, labels[usable])[0, 1])
+    shuffled = labels[rng.permutation(len(labels))][usable]
+    shuffled_r = float(np.corrcoef(centroid, shuffled)[0, 1])
+    blind = float(np.mean(np.abs(labels[usable] - labels[usable].mean())))
+
+    decoder = RetinalVectorDecoder(
+        cell_ids=cell_ids, positions=columns, baseline=baseline,
+        quantile=quantile, slope=float(slope), intercept=float(intercept),
+        position_scale=position_scale, motion_scale=motion_scale,
+        metadata={
+            "source": "malecns retinal population vector",
+            "readout": "winner-take-all centroid over mapped photoreceptors",
+            "candidate_rule": "mapped R1-R6 and R8 photoreceptors",
+            "cells": len(cell_ids),
+            "quantile": quantile,
+            "probe_offsets": len(offsets),
+            "repeats": int(repeats),
+            "warmup_discarded": int(warmup),
+            "observations": total,
+            "observations_with_a_visible_ball": int(usable.sum()),
+            "offset_range_px": [float(low), float(high)],
+            "reinforcement": "none",
+            "frozen_during_calibration": True,
+            "dataset": dataset_info,
+            "frame_conditions": frame_conditions(calibration_settings),
+            "validation_mae_px": mae,
+            "validation_correlation": correlation,
+            "shuffled_control_correlation": shuffled_r,
+            "shuffled_control_mae_px": blind,
+            "predict_the_mean_mae_px": blind,
+            "caveat": (
+                "Photoreceptors are the input layer, so this reads the retinal "
+                "image rather than any computation performed on it. It is a "
+                "genuine neural readout and an honestly sensory one."
+            ),
+        },
+    )
+    decoder.save(Path(out))
     return decoder

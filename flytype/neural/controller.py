@@ -264,7 +264,7 @@ class FlyController:
         return result
 
     def save(self, path):
-        self.brain.checkpoint(path)
+        self.brain.checkpoint(path, compress=self.s.compress_checkpoints)
 
     def restore(self, path):
         self.brain.restore(path)

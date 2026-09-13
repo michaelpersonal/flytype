@@ -245,3 +245,148 @@ def fit_population_decoder(
         ridge=ridge,
         metadata=metadata,
     )
+
+
+class RetinalVectorDecoder:
+    """Winner-take-all population vector over mapped photoreceptors.
+
+    The ridge decoder this replaces fitted descending-neuron firing rates to
+    the ball's offset and recovered nothing: 158.5 px held-out against 161.6 px
+    for shuffled labels. Two things were wrong with it.
+
+    Descending neurons are a motor bottleneck, a few hundred cells carrying
+    commands out of the brain. Retinotopic position lives in the eye, where
+    thousands of photoreceptors tile the visual field. And a place code cannot
+    be read by linear regression: a photoreceptor fires when the ball is over
+    *its* patch of screen, so its rate against offset is a bump, not a line,
+    and a fit over a handful of training offsets cannot interpolate it.
+
+    The standard readout for a place code is a population vector: weight each
+    cell by the screen position it looks at and take the centroid. Those
+    positions are anatomical -- they come from the connectome's retinotopy via
+    the retina adapter -- so they are not fitted to the game. Restricting the
+    vote to the most strongly driven cells matters, because the ball is small:
+    over the whole population its ~40 photoreceptors are swamped by background
+    and paddle, giving r = 0.87 and 89 px, while the top percentile alone gives
+    r = 0.99 and 17.5 px.
+
+    What this is and is not: photoreceptors are the input layer, so this reads
+    the retinal image rather than any computation the network performs on it.
+    It is a genuine neural readout -- LIF photoreceptor spikes, decoded by
+    anatomical position -- and it is honestly a sensory one. It should not be
+    described as the network deciding anything.
+    """
+
+    VERSION = 1
+
+    def __init__(self, *, cell_ids, positions, baseline, quantile, slope,
+                 intercept, position_scale, motion_scale, metadata=None):
+        self.cell_ids = tuple(str(x) for x in cell_ids)
+        self.positions = np.asarray(positions, dtype=float)
+        self.baseline = np.asarray(baseline, dtype=float)
+        self.quantile = float(quantile)
+        self.slope = float(slope)
+        self.intercept = float(intercept)
+        self.position_scale = float(position_scale)
+        self.motion_scale = float(motion_scale)
+        self.metadata = dict(metadata or {})
+        self.previous_offset = None
+        n = len(self.cell_ids)
+        if not n or len(self.positions) != n or len(self.baseline) != n:
+            raise ValueError("Retinal decoder vector lengths do not match")
+        if not 0.0 < self.quantile < 1.0:
+            raise ValueError("Retinal decoder quantile must lie in (0, 1)")
+        if self.slope == 0.0 or not np.isfinite(self.slope):
+            raise ValueError("Retinal decoder slope must be finite and nonzero")
+
+    def centroid(self, rates):
+        """Screen column the driven photoreceptors point at, or None if dark."""
+        try:
+            values = np.asarray([rates[c] for c in self.cell_ids], dtype=float)
+        except KeyError as exc:
+            raise ValueError(f"Missing photoreceptor rate for {exc.args[0]}") from None
+        if not np.isfinite(values).all():
+            raise ValueError("Photoreceptor rates must be finite")
+        driven = np.maximum(values - self.baseline, 0.0)
+        if not driven.any():
+            return None
+        cut = np.quantile(driven, self.quantile)
+        weights = np.where(driven >= cut, driven, 0.0)
+        total = weights.sum()
+        if total <= 0:
+            return None
+        return float((weights * self.positions).sum() / total)
+
+    def estimate(self, rates):
+        """Ball offset in world px, or None when nothing is driven."""
+        centre = self.centroid(rates)
+        if centre is None:
+            return None
+        return (centre - self.intercept) / self.slope
+
+    def decode(self, rates):
+        offset = self.estimate(rates)
+        if offset is None:
+            # Nothing visible: hold rather than invent a direction.
+            return {"offset_px": None, "relative_motion_px": 0.0,
+                    "raw_control": 0.0, "control": 0.0,
+                    "cell_count": len(self.cell_ids),
+                    "decoder_sha256": self.artifact_sha256}
+        motion = 0.0 if self.previous_offset is None else offset - self.previous_offset
+        raw = offset / self.position_scale + motion / self.motion_scale
+        self.previous_offset = offset
+        return {"offset_px": offset, "relative_motion_px": motion,
+                "raw_control": raw, "control": math.tanh(raw),
+                "cell_count": len(self.cell_ids),
+                "decoder_sha256": self.artifact_sha256}
+
+    def forget_motion(self):
+        self.previous_offset = None
+
+    def check_compatible(self, settings):
+        PopulationMotorDecoder.check_compatible(self, settings)
+
+    def state(self):
+        return {"previous_offset": self.previous_offset}
+
+    def restore(self, state):
+        value = state.get("previous_offset")
+        self.previous_offset = None if value is None else float(value)
+
+    def artifact(self):
+        return {"version": self.VERSION, "kind": "retinal_vector",
+                "cell_ids": list(self.cell_ids),
+                "positions": self.positions.tolist(),
+                "baseline": self.baseline.tolist(),
+                "quantile": self.quantile, "slope": self.slope,
+                "intercept": self.intercept,
+                "position_scale": self.position_scale,
+                "motion_scale": self.motion_scale, "metadata": self.metadata}
+
+    @property
+    def artifact_sha256(self):
+        payload = json.dumps(self.artifact(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def save(self, path):
+        Path(path).write_text(json.dumps(self.artifact(), indent=2) + "\n")
+
+    @classmethod
+    def load(cls, path):
+        data = json.loads(Path(path).read_text())
+        if data.get("kind") != "retinal_vector" or data.get("version") != cls.VERSION:
+            raise ValueError("Not a supported retinal vector decoder artifact")
+        return cls(cell_ids=data["cell_ids"], positions=data["positions"],
+                   baseline=data["baseline"], quantile=data["quantile"],
+                   slope=data["slope"], intercept=data["intercept"],
+                   position_scale=data["position_scale"],
+                   motion_scale=data["motion_scale"],
+                   metadata=data.get("metadata"))
+
+
+def load_motor_decoder(path):
+    """Load whichever decoder kind the artifact holds."""
+    data = json.loads(Path(path).read_text())
+    if data.get("kind") == "retinal_vector":
+        return RetinalVectorDecoder.load(path)
+    return PopulationMotorDecoder.load(path)

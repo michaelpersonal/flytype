@@ -50,6 +50,11 @@ class Settings:
     # faster: measured back to back after settling, frozen/plastic and
     # reinforced/unreinforced all cost 2.00-2.03 s per observation at ~431,000
     # spikes.
+    # Compress the per-observation brain checkpoint. Default on, which is what
+    # every experiment so far used. Off costs ~126 MB per checkpoint instead of
+    # ~5 MB and saves ~700 ms per observation, which matters only for a live
+    # session where the checkpoint would otherwise dominate the loop.
+    compress_checkpoints: bool = True
     reinforce: bool = True
     fixture: bool = False
     frozen: bool = False

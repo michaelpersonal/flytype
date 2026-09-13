@@ -363,7 +363,16 @@ class MemoryBrain(NativeBrain):
             "model": MODEL,
         }
 
-    def checkpoint(self, path):
+    def checkpoint(self, path, compress=True):
+        """Persist weights and dynamic state.
+
+        `compress` trades disk for wall clock, and the trade is steep: zlib on
+        this 126 MB payload costs ~720 ms against ~24 ms uncompressed, while
+        shrinking it to ~5 MB. A long unattended experiment wants the small
+        file; a live session checkpointing before every published update wants
+        the milliseconds, because otherwise the checkpoint costs several times
+        more than simulating the network did.
+        """
         metadata = {
             "model": MODEL,
             "build": self.build,
@@ -381,8 +390,9 @@ class MemoryBrain(NativeBrain):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(".partial")
+        save = np.savez_compressed if compress else np.savez
         with temporary.open("wb") as handle:
-            np.savez_compressed(
+            save(
                 handle,
                 metadata=json.dumps(metadata),
                 weight=self.weight,

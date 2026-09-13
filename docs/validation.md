@@ -263,6 +263,52 @@ Episode rollover, archival, resume and the loopback control API all behaved
 correctly throughout; those parts of the site work. What does not work is the
 decode.
 
+### The readout was wrong, not the network
+
+Everything above says the frozen ridge decoder over descending neurons cannot
+read the ball. That result stands, and the reason turned out to be the choice
+of population and the choice of readout, not the simulation.
+
+A whole-brain probe (15 offsets x 6 repeats, 50 ms window) settles it. Per-cell
+linear correlation with offset finds nothing anywhere: max |r| = 0.359 across
+all 166,700 neurons against 0.376 for shuffled labels. But that is the wrong
+statistic. A photoreceptor fires when the ball is over **its** patch of screen,
+so its rate against offset is a bump, not a line, and linear correlation is
+near zero for a perfectly informative cell. An F-test, which detects any
+dependence on offset whatever its shape, finds **805 cells** above the shuffled
+maximum (max F 25.5 against 5.0).
+
+The information is there. Reading it needs the decoder that matches a place
+code: a **population vector**, weighting each photoreceptor by the screen
+column it looks at -- a position taken from the connectome's retinotopy through
+the retina adapter, not fitted to anything -- and taking the centroid.
+
+| readout | held-out MAE | r | control |
+|---|---|---|---|
+| ridge over 32 descending neurons | 158.5 px | 0.23 | 161.6 px shuffled |
+| population vector, all photoreceptors | 88.6 px | 0.87 | shuffled r 0.12 |
+| population vector, top 1% driven cells | **17.5 px** | **0.99** | shuffled r 0.11 |
+
+Restricting the vote matters because the ball is small: across the whole
+population its ~40 photoreceptors are swamped by background and paddle.
+
+**Driving the game with it, the paddle tracks the ball.** Over 502 real MaleCNS
+observations: tracking **0.735** on 283 scored moves, **+7.91 SE above chance,
+exact two-sided p < 0.0001**; 30 paddle hits, 12 of 14 bricks broken, one ball
+lost. The offset estimate's standing bias is gone (mean +11 px against +276),
+the paddle uses the whole field (0..264, against 155..264), and control
+saturation falls from 73% to 32%. Fitted in the live pipeline at one ball
+height the decoder measures r = 0.81 and MAE 97 px, weaker than the 17.5 px
+probe figure because retinal sampling is uneven vertically and the live ball
+spans heights the fit did not cover.
+
+**The honest caveat, which matters.** Photoreceptors are the input layer. This
+reads the retinal image, not a computation the network performs on it. It is a
+genuine neural readout -- LIF photoreceptor spikes decoded by anatomical
+position -- and it is a sensory one. It shows the simulated eye sees the ball
+and that a standard population-vector readout of that eye can steer a paddle.
+It is not evidence that the network decides, learns, or plays.
+
 ### The cause: the decoder is deployed outside its calibration regime
 
 Calibration runs with plasticity **frozen** and reinforcement **off**. The

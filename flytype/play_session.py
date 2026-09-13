@@ -39,8 +39,11 @@ from .task import new_rng
 
 
 def _png_data_url(frame):
+    # compress_level=1, not optimize=True: this is a 320x180 frame re-encoded
+    # on every observation for a local page, where 8x the encode time buys a
+    # few hundred bytes nobody is paying for.
     buf = io.BytesIO()
-    Image.fromarray(frame).save(buf, format="PNG", optimize=True)
+    Image.fromarray(frame).save(buf, format="PNG", compress_level=1)
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 

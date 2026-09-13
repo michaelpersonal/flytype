@@ -134,6 +134,13 @@ def _build_parser():
     calibrate_play.add_argument("--brick-columns", type=int,
                                 default=Settings.brick_columns)
     calibrate_play.add_argument("--fixed-view", action="store_true")
+    calibrate_play.add_argument(
+        "--decoder", choices=["retinal", "population"], default="retinal",
+        help="retinal: winner-take-all population vector over photoreceptors, "
+             "voting with their own anatomical screen positions. population: "
+             "the original ridge fit over descending neurons, which does not "
+             "beat its controls on this geometry",
+    )
 
     web = sub.add_parser(
         "web", help="run the continuous loopback-only FlyBreak website"
@@ -160,6 +167,12 @@ def _build_parser():
     web.add_argument("--brick-rows", type=int, default=Settings.brick_rows)
     web.add_argument("--brick-columns", type=int, default=Settings.brick_columns)
     web.add_argument("--lives", type=int, default=Settings.lives)
+    web.add_argument(
+        "--compress-checkpoints", action="store_true",
+        help="shrink each checkpoint from ~126 MB to ~5 MB, at a cost of "
+             "~700 ms per observation -- several times the cost of simulating "
+             "the network",
+    )
     web.add_argument("--fixed-view", action="store_true")
     web.add_argument("--fixture", action="store_true")
     # The site runs in the regime its frozen decoder was calibrated in:
@@ -462,6 +475,9 @@ def _web_settings(args):
         seed=args.seed,
         neural_ms=args.neural_ms,
         pulse_ms=min(Settings.pulse_ms, args.neural_ms),
+        # A live session publishes after every observation, so a compressed
+        # checkpoint would cost several times more than simulating the network.
+        compress_checkpoints=args.compress_checkpoints,
         decoder_deadband_hz=args.decoder_deadband_hz,
         decoder_baseline_obs=args.decoder_baseline_obs,
         paddle_width=args.paddle_width,
@@ -505,6 +521,26 @@ def cmd_calibrate_play_decoder(args):
         }), flush=True)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    if args.decoder == "retinal":
+        from .play_calibration import calibrate_retinal_decoder
+
+        decoder = calibrate_retinal_decoder(
+            settings, args.out, dataset_info=dataset_info,
+            offset_count=args.offsets, repeats=args.repeats,
+            warmup=args.warmup, progress=progress,
+        )
+        m = decoder.metadata
+        print(json.dumps({
+            "calibrated": True, "kind": "retinal_vector", "path": str(args.out),
+            "decoder_sha256": decoder.artifact_sha256,
+            "photoreceptors": len(decoder.cell_ids),
+            "observations": m["observations"],
+            "validation_mae_px": m["validation_mae_px"],
+            "validation_correlation": m["validation_correlation"],
+            "shuffled_control_correlation": m["shuffled_control_correlation"],
+            "predict_the_mean_mae_px": m["predict_the_mean_mae_px"],
+        }), flush=True)
+        return
     decoder = calibrate_play_decoder(
         settings,
         args.out,
@@ -576,8 +612,8 @@ def cmd_web(args):
     import gc
     import webbrowser
 
-    from .motor import PopulationMotorDecoder
-    from .play_calibration import calibrate_play_decoder
+    from .motor import load_motor_decoder
+    from .play_calibration import calibrate_retinal_decoder
     from .play_session import ContinuousPlaySession
     from .web_server import GameRunner, create_server
 
@@ -594,7 +630,7 @@ def cmd_web(args):
                 "reason": "population decoder artifact not found",
                 "path": str(args.motor_decoder),
             }), flush=True)
-            motor = calibrate_play_decoder(
+            motor = calibrate_retinal_decoder(
                 settings,
                 args.motor_decoder,
                 dataset_info=dataset_info,
@@ -609,7 +645,7 @@ def cmd_web(args):
             motor = (
                 None
                 if settings.fixture
-                else PopulationMotorDecoder.load(args.motor_decoder)
+                else load_motor_decoder(args.motor_decoder)
             )
             if motor is not None:
                 # Every pixel-level condition, not just the window length: a
